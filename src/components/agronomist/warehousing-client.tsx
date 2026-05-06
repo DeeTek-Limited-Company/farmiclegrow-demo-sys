@@ -1,0 +1,441 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api-client";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { Warehouse, Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type BatchOption = {
+  id: string;
+  batchId: string;
+  crop: string;
+  quantity: string | number;
+  harvestDate: string;
+  farmer: { id: string; fullName: string; phone: string | null };
+};
+
+type HarvestOption = {
+  id: string;
+  harvestDate: string;
+  crop: string;
+  variety: string | null;
+  farmerId: string;
+  plot: { plotName: string | null };
+};
+
+type EntryRow = {
+  id: string;
+  batchId: string;
+  harvestId: string | null;
+  warehouseName: string;
+  warehouseLocation: string | null;
+  dateIn: string;
+  dateOut: string | null;
+  quantityStored: string | number | null;
+  stackNumber: string | null;
+  temperature: string | number | null;
+  humidity: string | number | null;
+  batch: BatchOption;
+  harvest: HarvestOption | null;
+};
+
+type FormState = {
+  batchId: string;
+  harvestId: string;
+  warehouseName: string;
+  warehouseLocation: string;
+  dateIn: string;
+  dateOut: string;
+  quantityStored: string;
+  stackNumber: string;
+  temperature: string;
+  humidity: string;
+};
+
+function batchLabel(b: BatchOption) {
+  const date = b.harvestDate ? format(new Date(b.harvestDate), "MMM d, yyyy") : "Date?";
+  return `${b.batchId} · ${b.crop} · ${Number(b.quantity).toFixed(2)} · Harvest ${date} · ${b.farmer.fullName}`;
+}
+
+function harvestLabel(h: HarvestOption) {
+  const date = h.harvestDate ? format(new Date(h.harvestDate), "MMM d, yyyy") : "Date?";
+  return `${h.crop}${h.variety ? ` (${h.variety})` : ""} · ${h.plot?.plotName || "Unnamed plot"} · ${date}`;
+}
+
+export function WarehousingClient({
+  initialBatches,
+  initialEntries,
+  initialHarvests,
+}: {
+  initialBatches: BatchOption[];
+  initialEntries: EntryRow[];
+  initialHarvests: HarvestOption[];
+}) {
+  const router = useRouter();
+  const [entries, setEntries] = useState<EntryRow[]>(initialEntries);
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [edit, setEdit] = useState<EntryRow | null>(null);
+
+  const [form, setForm] = useState<FormState>({
+    batchId: "",
+    harvestId: "",
+    warehouseName: "",
+    warehouseLocation: "",
+    dateIn: "",
+    dateOut: "",
+    quantityStored: "",
+    stackNumber: "",
+    temperature: "",
+    humidity: "",
+  });
+
+  const batchOptions = useMemo(() => {
+    return [...initialBatches].sort((a, b) => b.batchId.localeCompare(a.batchId));
+  }, [initialBatches]);
+
+  const harvestOptions = useMemo(() => {
+    return [...initialHarvests].sort((a, b) => new Date(b.harvestDate).getTime() - new Date(a.harvestDate).getTime());
+  }, [initialHarvests]);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return entries;
+    return entries.filter((e) => {
+      const batch = e.batch.batchId.toLowerCase();
+      const farmer = e.batch.farmer.fullName.toLowerCase();
+      const wh = e.warehouseName.toLowerCase();
+      const stack = (e.stackNumber || "").toLowerCase();
+      return batch.includes(s) || farmer.includes(s) || wh.includes(s) || stack.includes(s);
+    });
+  }, [entries, q]);
+
+  const resetForm = () => {
+    setForm({
+      batchId: "",
+      harvestId: "",
+      warehouseName: "",
+      warehouseLocation: "",
+      dateIn: "",
+      dateOut: "",
+      quantityStored: "",
+      stackNumber: "",
+      temperature: "",
+      humidity: "",
+    });
+    setEdit(null);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setOpen(true);
+  };
+
+  const openEdit = (e: EntryRow) => {
+    setEdit(e);
+    setForm({
+      batchId: e.batchId,
+      harvestId: e.harvestId || "",
+      warehouseName: e.warehouseName,
+      warehouseLocation: e.warehouseLocation || "",
+      dateIn: e.dateIn ? e.dateIn.slice(0, 10) : "",
+      dateOut: e.dateOut ? e.dateOut.slice(0, 10) : "",
+      quantityStored: e.quantityStored !== null && e.quantityStored !== undefined ? String(e.quantityStored) : "",
+      stackNumber: e.stackNumber || "",
+      temperature: e.temperature !== null && e.temperature !== undefined ? String(e.temperature) : "",
+      humidity: e.humidity !== null && e.humidity !== undefined ? String(e.humidity) : "",
+    });
+    setOpen(true);
+  };
+
+  const close = () => {
+    setOpen(false);
+    resetForm();
+  };
+
+  const submit = async () => {
+    if (!form.batchId) return toast.error("Select a batch.");
+    if (!form.warehouseName.trim()) return toast.error("Enter warehouse name.");
+    if (!form.dateIn) return toast.error("Select date in.");
+
+    setSaving(true);
+    try {
+      const payload: any = {
+        batchId: form.batchId,
+        harvestId: form.harvestId.trim() ? form.harvestId.trim() : null,
+        warehouseName: form.warehouseName.trim(),
+        warehouseLocation: form.warehouseLocation.trim() || null,
+        dateIn: new Date(form.dateIn).toISOString(),
+        dateOut: form.dateOut ? new Date(form.dateOut).toISOString() : null,
+        quantityStored: form.quantityStored ? Number(form.quantityStored) : null,
+        stackNumber: form.stackNumber.trim() || null,
+        temperature: form.temperature ? Number(form.temperature) : null,
+        humidity: form.humidity ? Number(form.humidity) : null,
+      };
+
+      if (edit) delete payload.batchId;
+
+      const res = await apiFetch(edit ? `/api/warehousing/${edit.id}` : "/api/warehousing", {
+        method: edit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Failed to save warehouse entry.");
+
+      toast.success(edit ? "Warehouse entry updated" : "Warehouse entry recorded");
+      close();
+      router.refresh();
+
+      const reload = await apiFetch("/api/warehousing");
+      const reloadJson = await reload.json().catch(() => ({}));
+      if (reload.ok) setEntries(reloadJson.entries || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save warehouse entry.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (e: EntryRow) => {
+    const ok = confirm("Delete this warehouse entry? This cannot be undone.");
+    if (!ok) return;
+    try {
+      const res = await apiFetch(`/api/warehousing/${e.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Failed to delete.");
+      toast.success("Deleted");
+      setEntries((prev) => prev.filter((x) => x.id !== e.id));
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete.");
+    }
+  };
+
+  return (
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 flex items-center gap-3">
+            <Warehouse className="w-8 h-8 text-primary" />
+            Warehousing
+          </h1>
+          <p className="text-slate-500 mt-2 font-medium max-w-2xl">
+            Record warehouse entry/exit, stack number, storage conditions, and quantity stored for each batch.
+          </p>
+        </div>
+        <Button onClick={openCreate} className="rounded-2xl font-bold h-12 px-6 shadow-xl shadow-primary/20">
+          <Plus className="w-4 h-4 mr-2" />
+          New entry
+        </Button>
+      </div>
+
+      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+          <CardTitle className="text-lg font-black tracking-tight">Search</CardTitle>
+          <CardDescription className="font-medium">Search by batch ID, farmer, warehouse, or stack number.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search warehousing..." className="pl-12 h-11 rounded-xl bg-white border-slate-200 font-medium" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {filtered.map((e) => (
+          <Card key={e.id} className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <CardTitle className="text-xl font-black tracking-tight truncate">
+                    <Link href={`/trace/${e.batch.batchId}`} className="hover:underline">
+                      {e.batch.batchId}
+                    </Link>
+                    <span className="text-slate-400"> · {e.warehouseName}</span>
+                  </CardTitle>
+                  <p className="text-slate-500 mt-1 font-medium">{e.batch.farmer.fullName}</p>
+                  <p className="text-xs text-slate-400 font-bold mt-2">
+                    In {format(new Date(e.dateIn), "MMM d, yyyy")}
+                    {e.dateOut ? ` · Out ${format(new Date(e.dateOut), "MMM d, yyyy")}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="icon" variant="outline" className="rounded-xl border-slate-200" onClick={() => openEdit(e)}>
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="outline" className="rounded-xl border-slate-200" onClick={() => void remove(e)}>
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-8 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {e.stackNumber ? (
+                  <Badge variant="outline" className="rounded-full text-[10px] font-black bg-white border-slate-200">
+                    Stack: {e.stackNumber}
+                  </Badge>
+                ) : null}
+                {e.quantityStored !== null && e.quantityStored !== undefined ? (
+                  <Badge variant="outline" className="rounded-full text-[10px] font-black bg-emerald-50 border-emerald-100 text-emerald-700">
+                    Stored: {Number(e.quantityStored).toFixed(2)}
+                  </Badge>
+                ) : null}
+                {e.temperature !== null && e.temperature !== undefined ? (
+                  <Badge variant="outline" className="rounded-full text-[10px] font-black bg-amber-50 border-amber-100 text-amber-700">
+                    Temp: {Number(e.temperature).toFixed(1)}
+                  </Badge>
+                ) : null}
+                {e.humidity !== null && e.humidity !== undefined ? (
+                  <Badge variant="outline" className="rounded-full text-[10px] font-black bg-blue-50 border-blue-100 text-blue-700">
+                    Humidity: {Number(e.humidity).toFixed(1)}
+                  </Badge>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
+        <DialogContent className="sm:max-w-[980px] rounded-[2rem] p-0 border-0 shadow-2xl">
+          <div className="flex max-h-[85vh] flex-col">
+            <div className="p-6 pb-4">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-black tracking-tight">{edit ? "Edit Warehouse Entry" : "Create Warehouse Entry"}</DialogTitle>
+                <DialogDescription className="text-sm font-medium text-muted-foreground">
+                  Record warehousing details for a batch.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Batch *</Label>
+                  <Select value={form.batchId} onValueChange={(v) => setForm((p) => ({ ...p, batchId: v }))} disabled={!!edit}>
+                    <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Select a batch..." />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                      {batchOptions.map((b) => (
+                        <SelectItem key={b.id} value={b.id} className="rounded-xl font-medium">
+                          {batchLabel(b)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Harvest (optional)</Label>
+                  <Select value={form.harvestId} onValueChange={(v) => setForm((p) => ({ ...p, harvestId: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Select harvest (optional)" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                      <SelectItem value="__none__" className="rounded-xl font-medium">
+                        None
+                      </SelectItem>
+                      {harvestOptions.map((h) => (
+                        <SelectItem key={h.id} value={h.id} className="rounded-xl font-medium">
+                          {harvestLabel(h)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Warehouse name *</Label>
+                  <Input value={form.warehouseName} onChange={(e) => setForm((p) => ({ ...p, warehouseName: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Warehouse location</Label>
+                  <Input value={form.warehouseLocation} onChange={(e) => setForm((p) => ({ ...p, warehouseLocation: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date in *</Label>
+                  <Input type="date" value={form.dateIn} onChange={(e) => setForm((p) => ({ ...p, dateIn: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date out</Label>
+                  <Input type="date" value={form.dateOut} onChange={(e) => setForm((p) => ({ ...p, dateOut: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity stored</Label>
+                  <Input type="number" step="0.01" value={form.quantityStored} onChange={(e) => setForm((p) => ({ ...p, quantityStored: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Stack number</Label>
+                  <Input value={form.stackNumber} onChange={(e) => setForm((p) => ({ ...p, stackNumber: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Temperature</Label>
+                  <Input type="number" step="0.01" value={form.temperature} onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Humidity</Label>
+                  <Input type="number" step="0.01" value={form.humidity} onChange={(e) => setForm((p) => ({ ...p, humidity: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 pt-4">
+              <DialogFooter>
+                <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void submit()} className="h-11 rounded-xl font-bold shadow-lg shadow-primary/20" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : edit ? (
+                    "Save changes"
+                  ) : (
+                    "Create entry"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
