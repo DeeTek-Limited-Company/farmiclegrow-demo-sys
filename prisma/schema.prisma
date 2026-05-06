@@ -1,0 +1,531 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubmissionStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  SUBMISSION_CREATED
+  SUBMISSION_APPROVED
+  SUBMISSION_REJECTED
+  SYSTEM
+}
+
+enum ProductionStatus {
+  PLANNED
+  ACTIVE
+  HARVESTED
+  COMPLETED
+}
+
+model User {
+  id            String           @id @default(cuid())
+  email         String           @unique
+  fullName      String
+  passwordHash  String
+  isActive      Boolean          @default(true)
+  mustChangePassword Boolean     @default(false)
+  failedLoginAttempts Int        @default(0)
+  lockUntil     DateTime?
+  temporaryPassword String?      // For onboarding visibility (cleared after first login)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  userRoles     UserRole[]
+  submissions   FarmerSubmission[] @relation("SubmissionActor")
+  approvals     ApprovalAction[] @relation("ApprovalActor")
+  notifications Notification[]
+  sessions      Session[]
+  agronomistDistricts AgronomistDistrict[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Role {
+  id        String     @id @default(cuid())
+  key       String     @unique
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userRoles UserRole[]
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  assignedAt DateTime @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Farmer {
+  id                String             @id @default(cuid())
+  externalRef       String?            @unique
+  fullName          String
+  phone             String?
+  gender            String?
+  dateOfBirth       DateTime?
+  bio               String?
+  ghanaCardNumber   String?            @unique
+  cooperativeName   String?
+  yearsFarming      Int?
+  certificationStatus String?
+  primaryCrop       String?
+  secondaryCrops    Json?
+  communityId       String?
+  qualityScore      Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  farmProfiles      FarmProfile[]
+  productionRecords ProductionRecord[]
+  certifications    Certification[]
+  submissions       FarmerSubmission[]
+  documents         Document[]
+  batches           Batch[]
+  community         Community?         @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  plots             FarmPlot[]
+  plantingActivities PlantingActivity[]
+  fieldActivities    FieldActivity[]
+  inputTraceabilities InputTraceability[]
+  harvestRecords     HarvestRecord[]
+}
+
+model FarmProfile {
+  id               String         @id @default(cuid())
+  farmerId         String
+  farmName         String
+  farmType         String?        // e.g., "crop", "mixed", "livestock"
+  farmSize         Decimal?       @db.Decimal(10, 2)
+  farmSizeUnit     String?        // "acres" | "hectares"
+  ownershipType    String?
+  irrigationType   String?
+  numberOfPlots    Int?
+  totalAreaHectare Decimal?       @db.Decimal(10, 2)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  farmer           Farmer         @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  locations        FarmLocation[]
+  productionRecords ProductionRecord[]
+}
+
+model FarmLocation {
+  id            String      @id @default(cuid())
+  farmProfileId String
+  latitude      Decimal?    @db.Decimal(10, 7)
+  longitude     Decimal?    @db.Decimal(10, 7)
+  address       String?
+  region        String?
+  district      String?
+  community     String?
+  isValidated   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  farmProfile   FarmProfile @relation(fields: [farmProfileId], references: [id], onDelete: Cascade)
+}
+
+model ProductionRecord {
+  id                String           @id @default(cuid())
+  farmerId          String
+  farmProfileId     String?
+  plotId            String?
+  season            String
+  cropType          String
+  cropVariety       String?
+  status            ProductionStatus @default(PLANNED)
+  plantingDate      DateTime?
+  expectedHarvestDate DateTime?
+  actualHarvestDate DateTime?        @map("harvestDate")
+  expectedYieldTon  Decimal?         @db.Decimal(10, 2)
+  quantityTon       Decimal?         @db.Decimal(10, 2) // Total harvested quantity
+  actualYieldTon    Decimal?         @db.Decimal(10, 2) // Usable/Clean yield
+  farmSizeHectares  Decimal?         @db.Decimal(10, 2)
+  farmingMethod     String?          // e.g., "Organic", "Conventional"
+  irrigationType    String?          // e.g., "Rainfed", "Drip"
+  inputsUsed        Json?            // e.g., Fertilizer, Pesticide details
+  notes             String?
+  updatedAt         DateTime         @updatedAt
+  farmer            Farmer           @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  farmProfile       FarmProfile?     @relation(fields: [farmProfileId], references: [id], onDelete: SetNull)
+  plot              FarmPlot?        @relation(fields: [plotId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  batches           Batch[]
+  fieldActivities   FieldActivity[]
+  harvestRecords    HarvestRecord[]
+  plantingActivities PlantingActivity[]
+}
+
+model Batch {
+  id                String   @id @default(cuid())
+  batchId           String   @unique // Auto-generated ID like FG-2024-CORN-001
+  farmerId          String
+  productionRecordId String
+  crop              String
+  quantity          Decimal  @db.Decimal(10, 2)
+  harvestDate       DateTime
+  qrCode            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  farmer            Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  productionRecord  ProductionRecord @relation(fields: [productionRecordId], references: [id], onDelete: Cascade)
+  movementLogs      MovementLog[]
+  warehouseEntries  WarehouseEntry[]
+  salesRecords      SalesRecord[]
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  farmerId      String
+  type          String   // e.g., "GHANA_CARD", "CERTIFICATION", "FARM_IMAGE"
+  name          String
+  url           String
+  status        String   @default("UPLOADED") // "UPLOADED", "MISSING", "NEEDS_REVIEW", "VERIFIED"
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  farmer        Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+}
+
+model Certification {
+  id            String   @id @default(cuid())
+  farmerId      String
+  name          String
+  issuer        String?
+  validFrom     DateTime?
+  validTo       DateTime?
+  documentUrl   String?
+  farmer        Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+}
+
+model FarmerSubmission {
+  id            String           @id @default(cuid())
+  farmerId       String
+  submittedById  String
+  status         SubmissionStatus @default(PENDING_REVIEW)
+  rejectionReason String?
+  dataQualityScore Int           @default(0)
+  submittedAt    DateTime         @default(now())
+  decidedAt      DateTime?
+  farmer         Farmer           @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  submittedBy    User             @relation("SubmissionActor", fields: [submittedById], references: [id], onDelete: Restrict)
+  approvalActions ApprovalAction[]
+}
+
+model ApprovalAction {
+  id            String           @id @default(cuid())
+  submissionId  String
+  actorUserId   String
+  action        SubmissionStatus
+  reason        String?
+  changeSet     Json?
+  createdAt     DateTime         @default(now())
+  submission    FarmerSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  actor         User             @relation("ApprovalActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  body        String?
+  isRead      Boolean          @default(false)
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+  readAt      DateTime?
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // e.g., "USER_LOGIN", "FARMER_CREATED", "USER_DELETED"
+  userId    String?  // The user who performed the action
+  details   Json?    // Contextual data
+  ip        String?
+  userAgent String?
+  status    String   @default("SUCCESS") // "SUCCESS" or "FAILURE"
+  createdAt DateTime @default(now())
+}
+
+model Region {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  districts District[]
+}
+
+model District {
+  id        String              @id @default(cuid())
+  name      String
+  regionId  String
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  region    Region              @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  communities Community[]
+  agronomistDistricts AgronomistDistrict[]
+
+  @@unique([regionId, name])
+}
+
+model Community {
+  id          String    @id @default(cuid())
+  name        String
+  districtId  String
+  latitude    Decimal?  @db.Decimal(10, 7)
+  longitude   Decimal?  @db.Decimal(10, 7)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  district    District  @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  farmers     Farmer[]
+
+  @@unique([districtId, name])
+}
+
+model AgronomistDistrict {
+  id           String   @id @default(cuid())
+  agronomistId String
+  districtId   String
+  createdAt    DateTime @default(now())
+  agronomist   User     @relation(fields: [agronomistId], references: [id], onDelete: Cascade)
+  district     District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@unique([agronomistId, districtId])
+}
+
+model FarmPlot {
+  id                     String     @id @default(cuid())
+  farmerId               String
+  plotName               String?
+  gpsPolygon             Json?
+  plotSizeHectare        Decimal?   @db.Decimal(10, 2)
+  soilType               String?
+  irrigationSource       String?
+  previousCrop           String?
+  currentCrop            String?
+  plantingSeason         String?
+  ownershipType          String?
+  landDocumentAvailable  Boolean?   @default(false)
+  environmentalRiskLevel String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  farmer                 Farmer     @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  productionRecords      ProductionRecord[]
+  plantingActivities     PlantingActivity[]
+  fieldActivities        FieldActivity[]
+  inputTraceabilities    InputTraceability[]
+  harvestRecords         HarvestRecord[]
+}
+
+model PlantingActivity {
+  id               String    @id @default(cuid())
+  plotId           String
+  farmerId         String
+  productionRecordId String?
+  cropType         String
+  varietyName      String?
+  seedSource       String?
+  seedBatchNumber  String?
+  seedQuantityUsed Decimal?  @db.Decimal(10, 2)
+  plantingDate     DateTime
+  spacingUsed      String?
+  germinationRate  Decimal?  @db.Decimal(5, 2)
+  fieldOfficerName String?
+  photosUploaded   Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  plot             FarmPlot  @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  farmer           Farmer    @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  productionRecord ProductionRecord? @relation(fields: [productionRecordId], references: [id], onDelete: SetNull)
+
+  @@index([farmerId, plantingDate])
+  @@index([plotId, plantingDate])
+  @@index([productionRecordId])
+}
+
+model FieldActivity {
+  id                  String           @id @default(cuid())
+  plotId              String
+  farmerId            String
+  productionRecordId  String?
+  activityType        String
+  activityDate        DateTime
+  labourUsed          String?
+  inputUsed           String?
+  quantityApplied     Decimal?         @db.Decimal(10, 2)
+  quantityUnit        String?
+  weatherCondition    String?
+  performedBy         String?
+  supervisorVerified  Boolean          @default(false)
+  geoTaggedPhoto      Json?
+  notes               String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  plot                FarmPlot         @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  farmer              Farmer           @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  productionRecord    ProductionRecord? @relation(fields: [productionRecordId], references: [id], onDelete: SetNull)
+
+  @@index([farmerId, activityDate])
+  @@index([plotId, activityDate])
+  @@index([productionRecordId])
+}
+
+model InputTraceability {
+  id            String    @id @default(cuid())
+  farmerId      String
+  plotId        String
+  inputCategory String
+  productName   String
+  manufacturer  String?
+  batchNumber   String?
+  supplier      String?
+  purchaseDate  DateTime?
+  expiryDate    DateTime?
+  quantityUsed  Decimal?  @db.Decimal(10, 2)
+  quantityUnit  String?
+  applicationDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  farmer        Farmer    @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  plot          FarmPlot  @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@index([farmerId, applicationDate])
+  @@index([plotId, applicationDate])
+  @@index([inputCategory])
+}
+
+model HarvestRecord {
+  id                  String           @id @default(cuid())
+  plotId              String
+  farmerId            String
+  productionRecordId  String?
+  harvestDate         DateTime
+  crop                String
+  variety             String?
+  quantityHarvested   Decimal?         @db.Decimal(12, 2)
+  unit                String?
+  harvestMethod       String?
+  harvestTeam         String?
+  initialQualityGrade String?
+  moistureReading     Decimal?         @db.Decimal(5, 2)
+  photos              Json?
+  supervisorApproved  Boolean          @default(false)
+  supervisorName      String?
+  notes               String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  plot                FarmPlot         @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  farmer              Farmer           @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  productionRecord    ProductionRecord? @relation(fields: [productionRecordId], references: [id], onDelete: SetNull)
+  qualityTests        QualityTest[]
+  warehouseEntries    WarehouseEntry[]
+
+  @@index([farmerId, harvestDate])
+  @@index([plotId, harvestDate])
+  @@index([productionRecordId])
+}
+
+model MovementLog {
+  id                 String   @id @default(cuid())
+  batchId            String
+  fromLocation       String
+  toLocation         String
+  driverName         String?
+  vehicleNumber      String?
+  dispatchDate       DateTime
+  arrivalDate        DateTime?
+  quantitySent       Decimal? @db.Decimal(12, 2)
+  quantityReceived   Decimal? @db.Decimal(12, 2)
+  conditionOnArrival String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  batch              Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, dispatchDate])
+}
+
+model WarehouseEntry {
+  id               String    @id @default(cuid())
+  batchId           String
+  harvestId         String?
+  warehouseName     String
+  warehouseLocation String?
+  dateIn            DateTime
+  dateOut           DateTime?
+  quantityStored    Decimal?  @db.Decimal(12, 2)
+  stackNumber       String?
+  temperature       Decimal?  @db.Decimal(6, 2)
+  humidity          Decimal?  @db.Decimal(6, 2)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  batch             Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  harvest           HarvestRecord? @relation(fields: [harvestId], references: [id], onDelete: SetNull)
+
+  @@index([batchId, dateIn])
+  @@index([harvestId])
+}
+
+model SalesRecord {
+  id           String   @id @default(cuid())
+  batchId      String
+  buyerName    String
+  buyerType    String?
+  quantitySold Decimal? @db.Decimal(12, 2)
+  pricePerUnit Decimal? @db.Decimal(12, 2)
+  totalValue   Decimal? @db.Decimal(14, 2)
+  dateSold     DateTime
+  destination  String?
+  paymentStatus String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  batch        Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, dateSold])
+}
+
+model QualityTest {
+  id              String       @id @default(cuid())
+  harvestId       String
+  dateTested      DateTime
+  moisturePct     Decimal?     @db.Decimal(5, 2)
+  foreignMatterPct Decimal?    @db.Decimal(5, 2)
+  brokenGrainPct  Decimal?     @db.Decimal(5, 2)
+  colorGrade      String?
+  pestDamage      String?
+  aflatoxinTest   String?
+  passed          Boolean
+  testedBy        String?
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  harvest         HarvestRecord @relation(fields: [harvestId], references: [id], onDelete: Cascade)
+
+  @@index([harvestId, dateTested])
+  @@index([passed])
+}
