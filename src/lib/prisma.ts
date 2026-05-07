@@ -35,7 +35,8 @@ const shouldUseSsl = Boolean(
       connectionString.includes("sslmode=verify-ca") ||
       connectionString.includes("sslmode=verify-full")),
 );
-const rejectUnauthorized = process.env.NODE_ENV === "production";
+const rejectUnauthorized =
+  process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "false" ? false : process.env.NODE_ENV === "production";
 
 export const prisma: PrismaClient =
   !connectionString
