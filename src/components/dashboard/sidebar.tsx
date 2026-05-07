@@ -218,12 +218,12 @@ export function Sidebar({
 
   return (
     <aside className={cn(
-      "flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground h-full overflow-hidden transition-all duration-300",
+      "flex flex-col border-r border-sidebar-border text-sidebar-foreground h-full overflow-hidden transition-all duration-300 bg-[linear-gradient(180deg,#14532D_0%,#0B2713_100%)]",
       isMobile ? "w-full" : "w-64 hidden lg:flex"
     )}>
       {/* Brand Header */}
-      <div className="p-8 border-b border-sidebar-border/10 flex items-center gap-4 bg-black/5">
-        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white flex items-center justify-center p-1.5 shadow-xl shadow-black/20 ring-1 ring-white/10">
+      <div className="p-8 border-b border-sidebar-border/10 flex items-center gap-4 bg-white/5 backdrop-blur-xl">
+        <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-white flex items-center justify-center p-1.5 shadow-xl shadow-black/25 ring-1 ring-white/10">
           <Image 
             src="/logo.png" 
             alt="Logo" 
@@ -232,12 +232,13 @@ export function Sidebar({
             className="w-full h-full object-contain" 
             priority
           />
+          <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-accent/25 blur-2xl" />
         </div>
         <div>
           <h1 className="text-xl font-black text-white leading-none tracking-tighter">
             FarmicleGrow
           </h1>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-primary font-black mt-1">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-accent font-black mt-1">
             {userRole} portal
           </p>
         </div>
@@ -258,10 +259,10 @@ export function Sidebar({
                     key={item.name}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group",
+                      "relative flex items-center gap-4 px-4 py-3 rounded-2xl transition-all duration-300 group",
                       active
-                        ? "bg-primary text-white shadow-lg shadow-primary/20 ring-1 ring-white/10"
-                        : "text-sidebar-foreground/60 hover:bg-white/5 hover:text-white"
+                        ? "bg-white/10 text-white shadow-[0_18px_50px_-40px_rgba(0,0,0,0.8)] ring-1 ring-white/10 before:absolute before:left-2 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-1 before:rounded-full before:bg-accent"
+                        : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
                     )}
                   >
                     <div className={cn(

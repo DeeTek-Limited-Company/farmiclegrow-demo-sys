@@ -106,40 +106,40 @@ export default async function AdminPage() {
       take: 5,
     }),
   ]) as unknown as [
-    number,
-    number,
-    number,
-    any[],
-    any[],
-    number,
-    any,
-    any[],
-    any[],
-    number,
-    number,
-    any,
-    number,
-    any,
-    number,
-    any[],
-    any[],
-    any[],
-    any[],
-    any[],
-    any[],
-    any[],
-    any[],
-  ];
+      number,
+      number,
+      number,
+      any[],
+      any[],
+      number,
+      any,
+      any[],
+      any[],
+      number,
+      number,
+      any,
+      number,
+      any,
+      number,
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+    ];
 
   const [
-    pendingCount, 
-    approvedCount, 
-    rejectedCount, 
-    latestActions, 
-    pendingSubmissions, 
-    totalFarmers, 
-    prodSum, 
-    allFarmersDates, 
+    pendingCount,
+    approvedCount,
+    rejectedCount,
+    latestActions,
+    pendingSubmissions,
+    totalFarmers,
+    prodSum,
+    allFarmersDates,
     cropGrouped,
     activeCycles,
     totalBatches,
@@ -168,7 +168,7 @@ export default async function AdminPage() {
     acc[date] = (acc[date] || 0) + 1;
     return acc;
   }, {});
-  
+
   const registrationData = Object.entries(regMap)
     .map(([date, count]) => ({ date, count }))
     .slice(-7); // Last 7 active days
@@ -568,3 +568,4 @@ function KpiCard({
     </Card>
   );
 }
+

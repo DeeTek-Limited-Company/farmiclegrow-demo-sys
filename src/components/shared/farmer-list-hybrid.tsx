@@ -3,30 +3,30 @@
 import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { 
-  MoreVertical, 
-  Phone, 
-  MapPin, 
-  ArrowUpRight, 
+import {
+  MoreVertical,
+  Phone,
+  MapPin,
+  ArrowUpRight,
   ExternalLink,
   ClipboardList,
   Package,
   CheckCircle2,
   AlertCircle
 } from "lucide-react";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +78,7 @@ export function FarmerListHybrid({ farmers, baseUrl }: FarmerListHybridProps) {
               const latestSub = farmer.submissions[0];
               const primaryProfile = farmer.farmProfiles[0];
               const qualityColor = farmer.qualityScore >= 80 ? "text-emerald-600" : farmer.qualityScore >= 50 ? "text-amber-600" : "text-red-600";
-              
+
               return (
                 <TableRow key={farmer.id} className="border-slate-50 hover:bg-slate-50/50 transition-colors group">
                   <TableCell className="py-6 pl-8">
@@ -95,13 +95,13 @@ export function FarmerListHybrid({ farmers, baseUrl }: FarmerListHybridProps) {
                   <TableCell className="py-6">
                     <div className="flex items-center gap-3">
                       <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className={cn("h-full transition-all duration-1000", 
-                            farmer.qualityScore >= 80 ? "bg-emerald-500" : 
-                            farmer.qualityScore >= 50 ? "bg-amber-500" : 
-                            "bg-red-500"
-                          )} 
-                          style={{ width: `${farmer.qualityScore}%` }} 
+                        <div
+                          className={cn("h-full transition-all duration-1000",
+                            farmer.qualityScore >= 80 ? "bg-emerald-500" :
+                              farmer.qualityScore >= 50 ? "bg-amber-500" :
+                                "bg-red-500"
+                          )}
+                          style={{ width: `${farmer.qualityScore}%` }}
                         />
                       </div>
                       <span className={cn("text-xs font-black", qualityColor)}>{farmer.qualityScore}%</span>
@@ -159,7 +159,7 @@ export function FarmerListHybrid({ farmers, baseUrl }: FarmerListHybridProps) {
         {farmers.map((farmer) => {
           const latestSub = farmer.submissions[0];
           const primaryProfile = farmer.farmProfiles[0];
-          
+
           return (
             <Link key={farmer.id} href={`${baseUrl}/${farmer.id}`} className="block group">
               <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden hover:scale-[1.02] transition-all">
@@ -179,10 +179,10 @@ export function FarmerListHybrid({ farmers, baseUrl }: FarmerListHybridProps) {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 rounded-2xl bg-slate-50/50 border border-slate-100 text-center">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Quality</p>
-                      <p className={cn("text-base font-black", 
-                        farmer.qualityScore >= 80 ? "text-emerald-600" : 
-                        farmer.qualityScore >= 50 ? "text-amber-600" : 
-                        "text-red-600"
+                      <p className={cn("text-base font-black",
+                        farmer.qualityScore >= 80 ? "text-emerald-600" :
+                          farmer.qualityScore >= 50 ? "text-amber-600" :
+                            "text-red-600"
                       )}>{farmer.qualityScore}%</p>
                     </div>
                     <div className="p-3 rounded-2xl bg-slate-50/50 border border-slate-100 text-center">
@@ -190,7 +190,7 @@ export function FarmerListHybrid({ farmers, baseUrl }: FarmerListHybridProps) {
                       <p className="text-sm font-bold text-slate-700 truncate">{farmer.primaryCrop || "N/A"}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between pt-4 border-t border-slate-50">
                     <div className="flex items-center gap-2">
                       <MapPin className="w-3.5 h-3.5 text-slate-300" />
@@ -215,7 +215,7 @@ function StatusBadge({ status }: { status: string }) {
     PENDING_REVIEW: "bg-amber-50 text-amber-700 border-amber-100 icon-amber-500",
     DRAFT: "bg-slate-50 text-slate-500 border-slate-100 icon-slate-400",
   };
-  
+
   const Icon = status === 'APPROVED' ? CheckCircle2 : status === 'REJECTED' ? AlertCircle : AlertCircle;
 
   return (
