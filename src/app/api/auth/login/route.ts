@@ -22,6 +22,20 @@ function getProgressiveDelay(attempts: number): number {
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.AUTH_SECRET) {
+      return NextResponse.json(
+        { message: "Server misconfigured.", code: "AUTH_SECRET_MISSING" },
+        { status: 500 },
+      );
+    }
+
+    if (!process.env.DATABASE_URL && !process.env.DATABASE_URL_POOLER) {
+      return NextResponse.json(
+        { message: "Server misconfigured.", code: "DATABASE_URL_MISSING" },
+        { status: 500 },
+      );
+    }
+
     const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
     const limitCheck = rateLimiter.check(ip, 4);
@@ -177,10 +191,17 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     console.error("AUTH_LOGIN_ERROR", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    let code = "AUTH_LOGIN_FAILED";
+    if (errorMessage.includes("AUTH_SECRET is not configured")) code = "AUTH_SECRET_MISSING";
+    else if (errorMessage.includes("DATABASE_URL is not set")) code = "DATABASE_URL_MISSING";
+    else if (errorMessage.includes("Can't reach database server")) code = "DB_UNREACHABLE";
+    else if (errorMessage.toLowerCase().includes("tls")) code = "DB_TLS_ERROR";
+
     const message =
-      process.env.NODE_ENV === "production"
-        ? "Login failed. Please try again."
-        : `Login failed: ${error instanceof Error ? error.message : String(error)}`;
-    return NextResponse.json({ message }, { status: 500 });
+      process.env.NODE_ENV === "production" ? "Login failed. Please try again." : `Login failed: ${errorMessage}`;
+
+    return NextResponse.json({ message, code }, { status: 500 });
   }
 }
