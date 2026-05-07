@@ -68,10 +68,16 @@ function hasAllowedImageType(value: string) {
   }
 }
 
+function preprocessPhone(v: unknown) {
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/\s+/g, "").replace(/-/g, "");
+}
+
 const onboardingSchema = z.object({
   fullName: z.string().trim().min(2).max(150),
   email: z.string().email().optional().or(z.literal("")),
-  phone: z.string().regex(/^(?:(?:\+233|233|0)[235]\d{8})$/, "Invalid Ghana phone number"),
+  phone: z.preprocess(preprocessPhone, z.string().regex(/^(?:(?:\+233|233|0)[235]\d{8})$/, "Invalid Ghana phone number")),
+  cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
   gender: z.string().trim().max(40).optional().or(z.literal("")),
   dateOfBirth: z.string().optional(),
   ghanaCardNumber: z
@@ -163,11 +169,16 @@ function toHectares(size: number | undefined, unit: "acres" | "hectares" | undef
   return size;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const url = new URL(request.url);
+  const minimal = url.searchParams.get("minimal") === "1";
+  const takeParam = url.searchParams.get("take");
+  const take = takeParam ? Math.max(1, Math.min(2000, Number(takeParam))) : 500;
 
   const whereClause: any = {};
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
@@ -176,7 +187,42 @@ export async function GET() {
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
-    whereClause.community = { districtId: { in: districtIds.length ? districtIds : ["__none__"] } };
+
+    if (!districtIds.length) {
+      return NextResponse.json(
+        { message: "No districts assigned to this agronomist yet." },
+        { status: 403 },
+      );
+    }
+
+    whereClause.community = { districtId: { in: districtIds } };
+  }
+
+  if (minimal) {
+    const farmers = await prisma.farmer.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        primaryCrop: true,
+        community: {
+          select: {
+            name: true,
+            district: {
+              select: {
+                name: true,
+                region: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+
+    return NextResponse.json({ farmers });
   }
 
   const farmers = await prisma.farmer.findMany({
@@ -223,7 +269,8 @@ export async function POST(request: Request) {
   const passwordHash = await hashPassword(tempPassword);
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(
+      async (tx) => {
       const community = await tx.community.findUnique({
         where: { id: data.communityId },
         include: { district: { include: { region: true } } },
@@ -275,6 +322,7 @@ export async function POST(request: Request) {
           gender: data.gender || null,
           dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
           ghanaCardNumber: data.ghanaCardNumber || null,
+          cooperativeName: data.cooperativeName || null,
           bio: data.bio || null,
           communityId: community.id,
           primaryCrop: data.crops.primaryCrop,
@@ -328,8 +376,6 @@ export async function POST(request: Request) {
         },
       });
 
-      await recomputeFarmerQualityScore(tx, farmer.id);
-
       // 5. Notify Admins
       const admins = await tx.userRole.findMany({
         where: { role: { key: "admin" } },
@@ -372,6 +418,15 @@ export async function POST(request: Request) {
       }
 
       return { farmer, submission, tempPassword, email: user.email };
+      },
+      {
+        maxWait: 30_000,
+        timeout: 30_000,
+      },
+    );
+
+    void recomputeFarmerQualityScore(prisma, result.farmer.id).catch((error) => {
+      console.error("RECOMPUTE_QUALITY_SCORE_ERROR", error);
     });
 
     await logAudit({

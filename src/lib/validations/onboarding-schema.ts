@@ -5,6 +5,23 @@ function preprocessEmpty(v: unknown) {
   return v;
 }
 
+function preprocessPhone(v: unknown) {
+  if (typeof v !== "string") return v;
+  return v.replace(/\s+/g, "").replace(/-/g, "");
+}
+
+function preprocessRequiredTrimmedString(v: unknown) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim();
+  return String(v).trim();
+}
+
+function preprocessOptionalTrimmedString(v: unknown) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim();
+  return String(v).trim();
+}
+
 function hasAllowedDocumentType(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return true;
@@ -50,25 +67,32 @@ function hasAllowedImageType(value: string) {
 
 // STEP 1: Personal Information
 export const personalSchema = z.object({
-  fullName: z.string().min(2, "Full name is required"),
-  phone: z
-    .string()
-    .regex(
-      /^(?:(?:\+233|233|0)[235]\d{8})$/,
-      "Invalid Ghana phone number. Use 0XXXXXXXXX or +233XXXXXXXXX"
-    ),
-  email: z.string().email().optional().or(z.literal("")),
+  fullName: z.preprocess(preprocessRequiredTrimmedString, z.string().min(2, "Full name is required")),
+  phone: z.preprocess(
+    (v) => preprocessPhone(preprocessRequiredTrimmedString(v)),
+    z
+      .string()
+      .min(1, "Phone number is required")
+      .refine(
+        (v) => (v ? /^(?:(?:\+233|233|0)[235]\d{8})$/.test(v) : true),
+        "Invalid Ghana phone number. Use 0XXXXXXXXX or +233XXXXXXXXX",
+      ),
+  ),
+  email: z.preprocess(
+    preprocessOptionalTrimmedString,
+    z.union([z.literal(""), z.string().email("Invalid email address")]),
+  ),
+  cooperativeName: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   gender: z.string().optional(),
   dateOfBirth: z.string().optional(),
   ghanaCardNumber: z
-    .string()
-    .regex(/^GHA-\d{9}-\d{1}$/, "Format must be GHA-XXXXXXXXX-X")
-    .optional()
-    .or(z.literal("")),
-  profilePhoto: z.string().optional(),
+    .preprocess(
+      preprocessOptionalTrimmedString,
+      z.union([z.literal(""), z.string().regex(/^GHA-\d{9}-\d{1}$/, "Format must be GHA-XXXXXXXXX-X")]),
+    ),
+  profilePhoto: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   ghanaCardPhotoUrl: z
-    .preprocess(preprocessEmpty, z.string().trim().min(1))
-    .optional()
+    .preprocess(preprocessOptionalTrimmedString, z.string())
     .refine((v) => (v ? hasAllowedImageType(v) : true), "Image must be JPG/PNG (URL or data: URI)"),
 });
 
@@ -92,8 +116,7 @@ export const farmSchema = z.object({
   numberOfPlots: z.preprocess(preprocessEmpty, z.coerce.number().int().nonnegative()).optional(),
   irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]),
   farmSitePhotoUrl: z
-    .preprocess(preprocessEmpty, z.string().trim().min(1))
-    .optional()
+    .preprocess(preprocessOptionalTrimmedString, z.string())
     .refine((v) => (v ? hasAllowedImageType(v) : true), "Image must be JPG/PNG (URL or data: URI)"),
 });
 
@@ -109,8 +132,7 @@ export const certificationSchema = z.object({
   issuingBody: z.string().optional(),
   expiryDate: z.string().optional(),
   documentUrl: z
-    .preprocess(preprocessEmpty, z.string().trim().min(1))
-    .optional()
+    .preprocess(preprocessOptionalTrimmedString, z.string())
     .refine((v) => (v ? hasAllowedDocumentType(v) : true), "Document must be PDF/JPG/PNG (URL or data: URI)"),
 });
 

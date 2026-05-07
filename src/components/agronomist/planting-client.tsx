@@ -9,7 +9,6 @@ import { Plus, Sprout, Pencil, Trash2, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CROP_OPTIONS } from "@/lib/crops";
 
 type FarmerOption = {
   id: string;
@@ -74,25 +74,6 @@ type ActivityRow = {
   productionRecord?: ProductionRecordOption | null;
 };
 
-const CROP_TYPES = [
-  "Maize",
-  "Rice",
-  "Cassava",
-  "Cocoa",
-  "Coffee",
-  "Palm Oil",
-  "Tomatoes",
-  "Onions",
-  "Pepper",
-  "Okra",
-  "Soybeans",
-  "Groundnuts",
-  "Sorghum",
-  "Millet",
-  "Yam",
-  "Sweet Potato",
-  "Other",
-];
 
 type FormState = {
   farmerId: string;
@@ -107,8 +88,28 @@ type FormState = {
   spacingUsed: string;
   germinationRate: string;
   fieldOfficerName: string;
-  photosUploadedJson: string;
+  photosUploadedUrls: string[];
 };
+
+function normalizePhotoUrls(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((x) => typeof x === "string") as string[];
+  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+  if (typeof value === "object") {
+    const v = value as any;
+    if (Array.isArray(v.urls)) return v.urls.filter((x: unknown) => typeof x === "string") as string[];
+  }
+  return [];
+}
+
+function toProxyUrlIfSupabasePublic(url: string): string {
+  const trimmed = url.trim();
+  const match = trimmed.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+  if (!match) return trimmed;
+  const bucket = match[1];
+  const key = decodeURIComponent(match[2]);
+  return `/api/uploads/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+}
 
 function farmerLabel(f: FarmerOption) {
   const c = f.community;
@@ -140,6 +141,7 @@ export function PlantingClient({
   initialProductionRecords,
   variant = "page",
   context,
+  currentUserName: initialUserName,
 }: {
   initialActivities: ActivityRow[];
   initialFarmers: FarmerOption[];
@@ -147,13 +149,16 @@ export function PlantingClient({
   initialProductionRecords: ProductionRecordOption[];
   variant?: "page" | "embedded";
   context?: PlantingContext;
+  currentUserName?: string;
 }) {
   const router = useRouter();
   const [activities, setActivities] = useState<ActivityRow[]>(initialActivities);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [edit, setEdit] = useState<ActivityRow | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>(initialUserName || "");
 
   const [form, setForm] = useState<FormState>({
     farmerId: "",
@@ -168,8 +173,37 @@ export function PlantingClient({
     spacingUsed: "",
     germinationRate: "",
     fieldOfficerName: "",
-    photosUploadedJson: "",
+    photosUploadedUrls: [],
   });
+
+  useEffect(() => {
+    if (initialUserName) {
+      setCurrentUserName(initialUserName);
+    }
+  }, [initialUserName]);
+
+  useEffect(() => {
+    if (initialUserName) return;
+    let cancelled = false;
+    async function loadMe() {
+      const res = await apiFetch("/api/auth/me");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const name = data?.user?.name ? String(data.user.name) : "";
+      if (!cancelled) setCurrentUserName(name);
+    }
+
+    void loadMe();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialUserName]);
+
+  useEffect(() => {
+    if (!currentUserName) return;
+    if (!open) return;
+    setForm((prev) => ({ ...prev, fieldOfficerName: prev.fieldOfficerName || currentUserName }));
+  }, [currentUserName, open]);
 
   useEffect(() => {
     setActivities(initialActivities);
@@ -215,10 +249,34 @@ export function PlantingClient({
       plantingDate: "",
       spacingUsed: "",
       germinationRate: "",
-      fieldOfficerName: "",
-      photosUploadedJson: "",
+      fieldOfficerName: currentUserName,
+      photosUploadedUrls: [],
     });
     setEdit(null);
+  };
+
+  const uploadPhotoFiles = async (files: File[]) => {
+    if (!files.length) return;
+    setUploadingPhotos(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.set("file", file);
+        formData.set("kind", "photos");
+        const res = await apiFetch("/api/uploads/image", { method: "POST", body: formData });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.message || "Upload failed");
+        if (!json?.url) throw new Error("Upload failed");
+        uploaded.push(String(json.url));
+      }
+      setForm((prev) => ({ ...prev, photosUploadedUrls: [...prev.photosUploadedUrls, ...uploaded].map(toProxyUrlIfSupabasePublic) }));
+      toast.success(`Uploaded ${uploaded.length} photo${uploaded.length === 1 ? "" : "s"}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload photos");
+    } finally {
+      setUploadingPhotos(false);
+    }
   };
 
   const openCreate = () => {
@@ -253,8 +311,8 @@ export function PlantingClient({
       plantingDate: a.plantingDate ? a.plantingDate.slice(0, 10) : "",
       spacingUsed: a.spacingUsed || "",
       germinationRate: a.germinationRate !== null && a.germinationRate !== undefined ? String(a.germinationRate) : "",
-      fieldOfficerName: a.fieldOfficerName || "",
-      photosUploadedJson: a.photosUploaded ? JSON.stringify(a.photosUploaded, null, 2) : "",
+      fieldOfficerName: a.fieldOfficerName || currentUserName,
+      photosUploadedUrls: normalizePhotoUrls(a.photosUploaded).map(toProxyUrlIfSupabasePublic),
     });
     setOpen(true);
   };
@@ -297,17 +355,7 @@ export function PlantingClient({
 
     setSaving(true);
     try {
-      let photosUploaded: unknown = null;
-      const raw = form.photosUploadedJson.trim();
-      if (raw) {
-        try {
-          photosUploaded = JSON.parse(raw);
-        } catch {
-          toast.error("Photos uploaded JSON is invalid — fix or clear it.");
-          setSaving(false);
-          return;
-        }
-      }
+      const photosUploaded = form.photosUploadedUrls.length ? form.photosUploadedUrls : null;
 
       const payload: any = {
         plotId: form.plotId,
@@ -321,7 +369,7 @@ export function PlantingClient({
         plantingDate: new Date(form.plantingDate).toISOString(),
         spacingUsed: form.spacingUsed.trim() || null,
         germinationRate: form.germinationRate ? Number(form.germinationRate) : null,
-        fieldOfficerName: form.fieldOfficerName.trim() || null,
+        fieldOfficerName: form.fieldOfficerName.trim() || currentUserName || null,
         photosUploaded,
       };
 
@@ -481,6 +529,31 @@ export function PlantingClient({
                 {a.spacingUsed ? <div>Spacing: {a.spacingUsed}</div> : null}
                 {a.fieldOfficerName ? <div>Field officer: {a.fieldOfficerName}</div> : null}
               </div>
+
+              {(() => {
+                const urls = normalizePhotoUrls(a.photosUploaded).map(toProxyUrlIfSupabasePublic);
+                if (!urls.length) return null;
+                return (
+                  <div className="pt-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                      Photos
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {urls.slice(0, 6).map((url) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                        >
+                          <img src={url} alt="Planting" className="h-20 w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         ))}
@@ -592,7 +665,7 @@ export function PlantingClient({
                   <SelectValue placeholder="Crop type" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {CROP_TYPES.map((c) => (
+                  {CROP_OPTIONS.map((c) => (
                     <SelectItem key={c} value={c} className="rounded-xl font-medium">
                       {c}
                     </SelectItem>
@@ -679,23 +752,65 @@ export function PlantingClient({
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Field officer name</Label>
               <Input
                 value={form.fieldOfficerName}
-                onChange={(e) => setForm((prev) => ({ ...prev, fieldOfficerName: e.target.value }))}
+                readOnly
                 className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-                placeholder="Name of field officer"
+                placeholder="Field officer name"
               />
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Photos uploaded (optional, JSON)
-              </Label>
-              <Textarea
-                value={form.photosUploadedJson}
-                onChange={(e) => setForm((prev) => ({ ...prev, photosUploadedJson: e.target.value }))}
-                rows={3}
-                className="rounded-xl bg-slate-50 border-slate-200 font-mono text-sm p-3"
-                placeholder='Example: [{"url":"https://...","type":"PLANTING_PHOTO"}]'
-              />
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Planting photos (optional)</Label>
+              <div className="space-y-3">
+                <Input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  multiple
+                  disabled={uploadingPhotos}
+                  className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                  onChange={async (e) => {
+                    const input = e.currentTarget;
+                    const files = Array.from(input.files || []);
+                    if (!files.length) return;
+                    await uploadPhotoFiles(files);
+                    if (input && input.isConnected) input.value = "";
+                  }}
+                />
+                {form.photosUploadedUrls.length ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {form.photosUploadedUrls.map((url, idx) => (
+                        <Badge
+                          key={url}
+                          variant="secondary"
+                          className="rounded-full cursor-pointer"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              photosUploadedUrls: prev.photosUploadedUrls.filter((x) => x !== url),
+                            }))
+                          }
+                          title="Click to remove"
+                        >
+                          {`Photo ${idx + 1}`}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {form.photosUploadedUrls.slice(0, 6).map((url) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                        >
+                          <img src={url} alt="Planting" className="h-20 w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
               </div>
             </div>
