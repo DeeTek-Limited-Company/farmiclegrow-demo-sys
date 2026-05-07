@@ -101,9 +101,41 @@ type FormState = {
   weatherCondition: string;
   performedBy: string;
   supervisorVerified: boolean;
-  geoTaggedPhotoJson: string;
+  geoPhotoUrl: string;
+  geoLat: string;
+  geoLng: string;
+  geoAccuracyMeters: string;
   notes: string;
 };
+
+function normalizeGeoTaggedPhoto(value: unknown): {
+  url: string;
+  lat: number | null;
+  lng: number | null;
+  accuracyMeters: number | null;
+} {
+  if (!value) return { url: "", lat: null, lng: null, accuracyMeters: null };
+  if (typeof value === "string") return { url: value, lat: null, lng: null, accuracyMeters: null };
+  if (typeof value !== "object") return { url: "", lat: null, lng: null, accuracyMeters: null };
+
+  const v = value as any;
+  const url = typeof v.url === "string" ? v.url : "";
+  const lat = typeof v.lat === "number" ? v.lat : typeof v.latitude === "number" ? v.latitude : null;
+  const lng = typeof v.lng === "number" ? v.lng : typeof v.longitude === "number" ? v.longitude : null;
+  const accuracyMeters =
+    typeof v.accuracyMeters === "number" ? v.accuracyMeters : typeof v.accuracy === "number" ? v.accuracy : null;
+
+  return { url, lat, lng, accuracyMeters };
+}
+
+function toProxyUrlIfSupabasePublic(url: string): string {
+  const trimmed = url.trim();
+  const match = trimmed.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+  if (!match) return trimmed;
+  const bucket = match[1];
+  const key = decodeURIComponent(match[2]);
+  return `/api/uploads/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+}
 
 function farmerLabel(f: FarmerOption) {
   const c = f.community;
@@ -147,6 +179,12 @@ export function FieldActivitiesClient({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [edit, setEdit] = useState<ActivityRow | null>(null);
+  const [uploadingGeoPhoto, setUploadingGeoPhoto] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsBestAccuracy, setGpsBestAccuracy] = useState<number | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string>("");
+  const [geoWatchId, setGeoWatchId] = useState<number | null>(null);
 
   const [form, setForm] = useState<FormState>({
     farmerId: "",
@@ -158,9 +196,18 @@ export function FieldActivitiesClient({
     weatherCondition: "",
     performedBy: "",
     supervisorVerified: false,
-    geoTaggedPhotoJson: "",
+    geoPhotoUrl: "",
+    geoLat: "",
+    geoLng: "",
+    geoAccuracyMeters: "",
     notes: "",
   });
+
+  useEffect(() => {
+    return () => {
+      if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+    };
+  }, [geoWatchId]);
 
   useEffect(() => {
     setActivities(initialActivities);
@@ -207,10 +254,116 @@ export function FieldActivitiesClient({
       weatherCondition: "",
       performedBy: "",
       supervisorVerified: false,
-      geoTaggedPhotoJson: "",
+      geoPhotoUrl: "",
+      geoLat: "",
+      geoLng: "",
+      geoAccuracyMeters: "",
       notes: "",
     });
+    setGpsAccuracy(null);
+    setGpsBestAccuracy(null);
+    setGpsStatus("");
     setEdit(null);
+  };
+
+  const uploadGeoPhoto = async (file: File) => {
+    setUploadingGeoPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("kind", "photos");
+      const res = await apiFetch("/api/uploads/image", { method: "POST", body: formData });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Upload failed");
+      const url = json?.url ? String(json.url) : "";
+      if (!url) throw new Error("Upload failed");
+      setForm((prev) => ({ ...prev, geoPhotoUrl: toProxyUrlIfSupabasePublic(url) }));
+      toast.success("Geo photo uploaded");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload photo");
+    } finally {
+      setUploadingGeoPhoto(false);
+    }
+  };
+
+  const captureGpsOnce = () => {
+    if (!navigator.geolocation) return toast.error("Geolocation is not supported by your browser");
+    setIsLocating(true);
+    setGpsStatus("Getting GPS fix...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        setForm((prev) => ({
+          ...prev,
+          geoLat: String(latitude),
+          geoLng: String(longitude),
+          geoAccuracyMeters: Number.isFinite(accuracy) ? String(Math.round(accuracy)) : prev.geoAccuracyMeters,
+        }));
+        setGpsAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        setGpsBestAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        setGpsStatus("");
+        setIsLocating(false);
+        toast.success("GPS captured");
+      },
+      (err) => {
+        setGpsStatus("");
+        setIsLocating(false);
+        toast.error("Failed to capture GPS: " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    );
+  };
+
+  const refineGps = () => {
+    if (!navigator.geolocation) return toast.error("Geolocation is not supported by your browser");
+    if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+
+    setIsLocating(true);
+    setGpsStatus("Refining GPS accuracy...");
+    setGpsBestAccuracy(null);
+
+    const startedAt = Date.now();
+    const maxMs = 25000;
+    const goodEnoughMeters = 25;
+
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        const meters = Number.isFinite(accuracy) ? accuracy : null;
+        if (meters !== null) setGpsAccuracy(meters);
+
+        const best = gpsBestAccuracy;
+        const isBetter = meters !== null && (best === null || meters < best);
+        if (isBetter) {
+          setGpsBestAccuracy(meters);
+          setForm((prev) => ({
+            ...prev,
+            geoLat: String(latitude),
+            geoLng: String(longitude),
+            geoAccuracyMeters: String(Math.round(meters)),
+          }));
+        }
+
+        const elapsed = Date.now() - startedAt;
+        if ((meters !== null && meters <= goodEnoughMeters) || elapsed >= maxMs) {
+          navigator.geolocation.clearWatch(id);
+          setGeoWatchId(null);
+          setGpsStatus("");
+          setIsLocating(false);
+          toast.success("GPS refined");
+        }
+      },
+      (err) => {
+        navigator.geolocation.clearWatch(id);
+        setGeoWatchId(null);
+        setGpsStatus("");
+        setIsLocating(false);
+        toast.error("Failed to refine GPS: " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    );
+
+    setGeoWatchId(id);
   };
 
   const openCreate = () => {
@@ -228,6 +381,7 @@ export function FieldActivitiesClient({
 
   const openEdit = (a: ActivityRow) => {
     setEdit(a);
+    const geo = normalizeGeoTaggedPhoto(a.geoTaggedPhoto);
     setForm({
       farmerId: a.farmerId,
       plotId: a.plotId,
@@ -238,7 +392,10 @@ export function FieldActivitiesClient({
       weatherCondition: a.weatherCondition || "",
       performedBy: a.performedBy || "",
       supervisorVerified: !!a.supervisorVerified,
-      geoTaggedPhotoJson: a.geoTaggedPhoto ? JSON.stringify(a.geoTaggedPhoto, null, 2) : "",
+      geoPhotoUrl: geo.url ? toProxyUrlIfSupabasePublic(geo.url) : "",
+      geoLat: geo.lat !== null ? String(geo.lat) : "",
+      geoLng: geo.lng !== null ? String(geo.lng) : "",
+      geoAccuracyMeters: geo.accuracyMeters !== null ? String(Math.round(geo.accuracyMeters)) : "",
       notes: a.notes || "",
     });
     setOpen(true);
@@ -271,17 +428,19 @@ export function FieldActivitiesClient({
 
     setSaving(true);
     try {
-      let geoTaggedPhoto: unknown = null;
-      const raw = form.geoTaggedPhotoJson.trim();
-      if (raw) {
-        try {
-          geoTaggedPhoto = JSON.parse(raw);
-        } catch {
-          toast.error("Geo-tagged photo JSON is invalid — fix or clear it.");
-          setSaving(false);
-          return;
-        }
-      }
+      const lat = form.geoLat.trim() ? Number(form.geoLat) : null;
+      const lng = form.geoLng.trim() ? Number(form.geoLng) : null;
+      const accuracyMeters = form.geoAccuracyMeters.trim() ? Number(form.geoAccuracyMeters) : null;
+      const geoTaggedPhoto =
+        (form.geoPhotoUrl.trim() || (lat !== null && lng !== null))
+          ? {
+              url: form.geoPhotoUrl.trim() || null,
+              lat,
+              lng,
+              accuracyMeters,
+              capturedAt: new Date().toISOString(),
+            }
+          : null;
 
       const payload: any = {
         farmerId: form.farmerId,
@@ -463,6 +622,45 @@ export function FieldActivitiesClient({
                 {a.labourUsed ? <div>Labour: {a.labourUsed}</div> : null}
                 {a.notes ? <div>Notes: {a.notes}</div> : null}
               </div>
+
+              {(() => {
+                const geo = normalizeGeoTaggedPhoto(a.geoTaggedPhoto);
+                const url = geo.url ? toProxyUrlIfSupabasePublic(geo.url) : "";
+                const hasCoords = geo.lat !== null && geo.lng !== null;
+                if (!url && !hasCoords) return null;
+                const mapsUrl = hasCoords
+                  ? `https://www.google.com/maps?q=${encodeURIComponent(`${geo.lat},${geo.lng}`)}`
+                  : null;
+
+                return (
+                  <div className="pt-2 space-y-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Geo tagged</div>
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <img src={url} alt="Geo" className="h-32 w-full object-cover" />
+                      </a>
+                    ) : null}
+                    {hasCoords ? (
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>
+                          {geo.lat?.toFixed(6)}, {geo.lng?.toFixed(6)}
+                          {geo.accuracyMeters !== null ? ` · ~${Math.round(geo.accuracyMeters)}m` : ""}
+                        </span>
+                        {mapsUrl ? (
+                          <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-primary underline">
+                            Open in Maps
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         ))}
@@ -631,16 +829,115 @@ export function FieldActivitiesClient({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Geo-tagged photo (optional, JSON)
-                  </Label>
-                  <Textarea
-                    value={form.geoTaggedPhotoJson}
-                    onChange={(e) => setForm((prev) => ({ ...prev, geoTaggedPhotoJson: e.target.value }))}
-                    rows={3}
-                    className="rounded-xl bg-slate-50 border-slate-200 font-mono text-sm p-3"
-                    placeholder='Example: {"url":"https://...","lat":9.4,"lng":-0.8}'
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Geo-tagged photo</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={captureGpsOnce}
+                        disabled={isLocating}
+                        className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold"
+                      >
+                        Capture GPS
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={refineGps}
+                        disabled={isLocating}
+                        className="h-8 rounded-lg border-slate-200 font-bold"
+                      >
+                        Refine
+                      </Button>
+                    </div>
+                  </div>
+
+                  {gpsStatus ? <div className="text-xs font-bold text-slate-500">{gpsStatus}</div> : null}
+                  {gpsAccuracy !== null ? (
+                    <div className="text-xs font-bold text-slate-500">
+                      Accuracy: ~{Math.round(gpsAccuracy)}m{gpsBestAccuracy !== null ? ` · Best: ~${Math.round(gpsBestAccuracy)}m` : ""}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-3">
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      disabled={uploadingGeoPhoto}
+                      className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                      onChange={async (e) => {
+                        const input = e.currentTarget;
+                        const file = input.files?.[0] ?? null;
+                        if (!file) return;
+                        await uploadGeoPhoto(file);
+                        if (input && input.isConnected) input.value = "";
+                      }}
+                    />
+
+                    {form.geoPhotoUrl ? (
+                      <a
+                        href={form.geoPhotoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <img src={form.geoPhotoUrl} alt="Geo photo" className="h-40 w-full object-cover" />
+                      </a>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        value={form.geoLat}
+                        onChange={(e) => setForm((prev) => ({ ...prev, geoLat: e.target.value }))}
+                        className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                        placeholder="Latitude"
+                      />
+                      <Input
+                        value={form.geoLng}
+                        onChange={(e) => setForm((prev) => ({ ...prev, geoLng: e.target.value }))}
+                        className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                        placeholder="Longitude"
+                      />
+                    </div>
+
+                    <Input
+                      value={form.geoAccuracyMeters}
+                      onChange={(e) => setForm((prev) => ({ ...prev, geoAccuracyMeters: e.target.value }))}
+                      className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                      placeholder="Accuracy (meters, optional)"
+                    />
+
+                    {(() => {
+                      const latNum = form.geoLat.trim() ? Number(form.geoLat) : NaN;
+                      const lngNum = form.geoLng.trim() ? Number(form.geoLng) : NaN;
+                      if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return null;
+                      const delta = 0.01;
+                      const left = lngNum - delta;
+                      const right = lngNum + delta;
+                      const bottom = latNum - delta;
+                      const top = latNum + delta;
+                      const src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(
+                        `${left},${bottom},${right},${top}`,
+                      )}&layer=mapnik&marker=${encodeURIComponent(`${latNum},${lngNum}`)}`;
+                      const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${latNum},${lngNum}`)}`;
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Map preview</span>
+                            <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary underline">
+                              Open in Maps
+                            </a>
+                          </div>
+                          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                            <iframe title="Geo photo location" src={src} className="h-56 w-full" loading="lazy" />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 <div className="space-y-2 md:col-span-2">

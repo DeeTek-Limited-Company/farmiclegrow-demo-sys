@@ -23,30 +23,18 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Sprout, Activity, CheckCircle2, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { CROP_OPTIONS } from "@/lib/crops";
+import { getNorthernGhanaSeasonOptions } from "@/lib/seasons";
 
 interface ProductionRecordFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
   editRecord?: any;
+  initialFarmers?: any[];
 }
 
-const SEASONS = [
-  { value: "2026-MAIN", label: "2026 Main Season" },
-  { value: "2026-OFF", label: "2026 Off Season" },
-  { value: "2025-MAIN", label: "2025 Main Season" },
-  { value: "2025-OFF", label: "2025 Off Season" },
-  { value: "2024-MAIN", label: "2024 Main Season" },
-  { value: "2024-OFF", label: "2024 Off Season" },
-  { value: "2023-MAIN", label: "2023 Main Season" },
-  { value: "2023-OFF", label: "2023 Off Season" },
-];
-
-const CROP_TYPES = [
-  "Maize", "Rice", "Cassava", "Cocoa", "Coffee", "Palm Oil",
-  "Tomatoes", "Onions", "Pepper", "Okra", "Soybeans", "Groundnuts",
-  "Sorghum", "Millet", "Yam", "Sweet Potato", "Other",
-];
+const SEASONS = getNorthernGhanaSeasonOptions();
 
 const STATUS_OPTIONS = [
   { value: "PLANNED", label: "Planned", icon: <Clock className="w-3 h-3 mr-1" />, color: "bg-slate-100 text-slate-600" },
@@ -63,9 +51,11 @@ export function ProductionRecordForm({
   onOpenChange,
   onSuccess,
   editRecord,
+  initialFarmers,
 }: ProductionRecordFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [farmers, setFarmers] = useState<any[]>([]);
+  const [farmersLoading, setFarmersLoading] = useState(false);
+  const [farmers, setFarmers] = useState<any[]>(() => initialFarmers ?? []);
   const [plots, setPlots] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     farmerId: "",
@@ -88,7 +78,11 @@ export function ProductionRecordForm({
 
   useEffect(() => {
     if (open) {
-      fetchFarmers();
+      if (!initialFarmers?.length) {
+        fetchFarmers();
+      } else {
+        setFarmers(initialFarmers);
+      }
       if (editRecord) {
         setFormData({
           farmerId: editRecord.farmerId || "",
@@ -112,7 +106,7 @@ export function ProductionRecordForm({
         resetForm();
       }
     }
-  }, [open, editRecord]);
+  }, [open, editRecord, initialFarmers]);
 
   const fetchPlots = async (farmerId: string) => {
     try {
@@ -129,14 +123,23 @@ export function ProductionRecordForm({
   };
 
   const fetchFarmers = async () => {
+    setFarmersLoading(true);
     try {
-      const res = await apiFetch("/api/farmers");
-      if (res.ok) {
-        const data = await res.json();
-        setFarmers(data.farmers || []);
+      const res = await apiFetch("/api/farmers?minimal=1&take=500");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFarmers([]);
+        toast.error(data?.message || "Failed to load farmers");
+        return;
       }
+
+      setFarmers(data.farmers || []);
     } catch (error) {
-      console.error("Failed to fetch farmers", error);
+      setFarmers([]);
+      toast.error("Failed to load farmers");
+    }
+    finally {
+      setFarmersLoading(false);
     }
   };
 
@@ -271,16 +274,27 @@ export function ProductionRecordForm({
                 <Select
                   value={formData.farmerId}
                   onValueChange={(value) => {
-                    setFormData((prev) => ({ ...prev, farmerId: value, plotId: "" }));
+                    const selected = farmers.find((f) => f.id === value);
+                    setFormData((prev) => ({
+                      ...prev,
+                      farmerId: value,
+                      plotId: "",
+                      cropType: selected?.primaryCrop ? String(selected.primaryCrop) : prev.cropType,
+                    }));
                     void fetchPlots(value);
                   }}
                   disabled={!!editRecord}
                   required
                 >
                   <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-bold focus:ring-emerald-500/20 transition-all">
-                    <SelectValue placeholder="Select a farmer..." />
+                    <SelectValue placeholder={farmersLoading ? "Loading farmers..." : "Select a farmer..."} />
                   </SelectTrigger>
                   <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
+                    {!farmersLoading && farmers.length === 0 ? (
+                      <SelectItem value="__none__" disabled className="rounded-xl my-1 font-medium">
+                        No farmers found
+                      </SelectItem>
+                    ) : null}
                     {farmers.map((f) => (
                       <SelectItem key={f.id} value={f.id} className="rounded-xl my-1 font-medium">
                         {f.fullName} {f.phone ? `(${f.phone})` : ""}
@@ -372,7 +386,7 @@ export function ProductionRecordForm({
                     <SelectValue placeholder="Crop" />
                   </SelectTrigger>
                   <SelectContent className="rounded-2xl border-slate-100">
-                    {CROP_TYPES.map((c) => (
+                    {CROP_OPTIONS.map((c) => (
                       <SelectItem key={c} value={c} className="rounded-xl font-medium">{c}</SelectItem>
                     ))}
                   </SelectContent>

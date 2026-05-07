@@ -163,11 +163,13 @@ export function AgronomistProductionView({
   initialFarmers,
   initialPlots,
   initialProductionRecords,
+  currentUserName,
 }: {
   initialRecords: SerializedProductionRecord[];
   initialFarmers: FarmerOption[];
   initialPlots: PlotOption[];
   initialProductionRecords: ProductionRecordOption[];
+  currentUserName: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -296,6 +298,7 @@ export function AgronomistProductionView({
         onOpenChange={handleDialogChange}
         onSuccess={onSuccess}
         editRecord={editRecord ?? undefined}
+        initialFarmers={initialFarmers}
       />
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -636,6 +639,7 @@ export function AgronomistProductionView({
                     initialProductionRecords={initialProductionRecords as any}
                     variant="embedded"
                     context={cycleContext as any}
+                    currentUserName={currentUserName}
                   />
                 </div>
                 <div className="space-y-6">

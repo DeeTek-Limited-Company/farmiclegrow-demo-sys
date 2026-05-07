@@ -48,6 +48,17 @@ export default async function AgronomistHarvestPage() {
     }),
     prisma.productionRecord.findMany({
       where: productionWhere,
+      select: {
+        id: true,
+        farmerId: true,
+        plotId: true,
+        season: true,
+        cropType: true,
+        cropVariety: true,
+        status: true,
+        expectedHarvestDate: true,
+        actualHarvestDate: true,
+      },
       orderBy: { createdAt: "desc" },
       take: 1200,
     }),
@@ -62,4 +73,3 @@ export default async function AgronomistHarvestPage() {
     />
   );
 }
-

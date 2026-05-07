@@ -42,6 +42,7 @@ import {
 } from "@/lib/validations/onboarding-schema";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { CROP_OPTIONS } from "@/lib/crops";
 
 const steps = [
   { id: "personal", title: "Personal Info", description: "Identity & contact details", icon: User, schema: personalSchema },
@@ -56,6 +57,10 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsBestAccuracy, setGpsBestAccuracy] = useState<number | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string>("");
+  const watchIdRef = useRef<number | null>(null);
   const [uploadingGhanaCard, setUploadingGhanaCard] = useState(false);
   const [uploadingFarmSite, setUploadingFarmSite] = useState(false);
   const [districts, setDistricts] = useState<{ id: string; name: string; region: { id: string; name: string } }[]>([]);
@@ -65,6 +70,19 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
   const ghanaCardInputRef = useRef<HTMLInputElement | null>(null);
   const farmSiteInputRef = useRef<HTMLInputElement | null>(null);
 
+  const stopWatchingLocation = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopWatchingLocation();
+    };
+  }, []);
+
   const captureLocation = () => {
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
@@ -72,18 +90,72 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     }
 
     setIsLocating(true);
+    setGpsStatus("Getting GPS fix...");
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setValue("location.latitude", position.coords.latitude);
-        setValue("location.longitude", position.coords.longitude);
+        const { latitude, longitude, accuracy } = position.coords;
+        setValue("location.latitude", latitude);
+        setValue("location.longitude", longitude);
+        setGpsAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        setGpsBestAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        setGpsStatus("");
         setIsLocating(false);
-        toast.success("Location captured successfully!");
+        toast.success("GPS location captured");
       },
       (error) => {
         setIsLocating(false);
+        setGpsStatus("");
         toast.error("Failed to capture location: " + error.message);
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  };
+
+  const refineGpsLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    stopWatchingLocation();
+    setIsLocating(true);
+    setGpsStatus("Refining GPS accuracy...");
+    setGpsBestAccuracy(null);
+
+    const startedAt = Date.now();
+    const maxMs = 25000;
+    const goodEnoughMeters = 25;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        const meters = Number.isFinite(accuracy) ? accuracy : null;
+        if (meters !== null) setGpsAccuracy(meters);
+
+        const best = gpsBestAccuracy;
+        const isBetter = meters !== null && (best === null || meters < best);
+
+        if (isBetter) {
+          setGpsBestAccuracy(meters);
+          setValue("location.latitude", latitude);
+          setValue("location.longitude", longitude);
+        }
+
+        const elapsed = Date.now() - startedAt;
+        if ((meters !== null && meters <= goodEnoughMeters) || elapsed >= maxMs) {
+          stopWatchingLocation();
+          setIsLocating(false);
+          setGpsStatus("");
+          toast.success("GPS location refined");
+        }
+      },
+      (error) => {
+        stopWatchingLocation();
+        setIsLocating(false);
+        setGpsStatus("");
+        toast.error("Failed to refine GPS: " + error.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
     );
   };
 
@@ -101,7 +173,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
   } = useForm<FarmerOnboardingData>({
     // Removed global resolver to prevent full-form validation on each step
     defaultValues: {
-      personal: { fullName: "", phone: "", email: "", gender: "Male", ghanaCardPhotoUrl: "" },
+      personal: { fullName: "", phone: "", email: "", cooperativeName: "", gender: "Male", ghanaCardPhotoUrl: "" },
       location: { districtId: "", communityId: "", region: "", district: "", community: "" },
       farm: { farmName: "", farmSize: 0, farmSizeUnit: "acres", ownershipType: "Owned", irrigationType: "Rain-fed", farmSitePhotoUrl: "" },
       crops: { primaryCrop: "", secondaryCrops: [] },
@@ -127,13 +199,17 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
         
         // Map Zod errors to React Hook Form errors
         result.error.issues.forEach((issue) => {
-          setError(`${step.id}.${issue.path.join(".")}` as any, {
+          const path = issue.path.length ? `${step.id}.${issue.path.join(".")}` : String(step.id);
+          setError(path as any, {
             type: "manual",
             message: issue.message,
           });
         });
         
-        toast.error(`Please complete the ${step.title} section.`);
+        const first = result.error.issues[0];
+        const field = first?.path?.[0] ? String(first.path[0]) : null;
+        const message = first?.message ? (field ? `${step.title}: ${first.message}` : first.message) : `Please complete the ${step.title} section.`;
+        toast.error(message);
         return;
       }
     }
@@ -150,6 +226,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
   };
 
   const [credentials, setCredentials] = useState<{ email: string; tempPassword: string; farmerName: string } | null>(null);
+  const [secondaryCropDraft, setSecondaryCropDraft] = useState<string>("");
 
   const onSubmit = async (data: FarmerOnboardingData) => {
     setIsSubmitting(true);
@@ -193,9 +270,10 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     }
   };
 
-  const uploadImage = async (file: File) => {
+  const uploadFile = async (file: File, kind: "docs" | "photos" | "certs") => {
     const form = new FormData();
     form.set("file", file);
+    form.set("kind", kind);
     const res = await apiFetch("/api/uploads/image", { method: "POST", body: form });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || "Upload failed");
@@ -213,7 +291,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     if (!file) return;
     setUploadingGhanaCard(true);
     try {
-      const url = await uploadImage(file);
+      const url = await uploadFile(file, "docs");
       setValue("personal.ghanaCardPhotoUrl", url);
       toast.success("Ghana Card photo uploaded");
     } catch (e: any) {
@@ -228,7 +306,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     if (!file) return;
     setUploadingFarmSite(true);
     try {
-      const url = await uploadImage(file);
+      const url = await uploadFile(file, "photos");
       setValue("farm.farmSitePhotoUrl", url);
       toast.success("Farm site photo uploaded");
     } catch (e: any) {
@@ -456,6 +534,16 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                         </div>
 
                         <div className="space-y-2">
+                          <Label htmlFor="cooperativeName">Cooperative Name (Optional)</Label>
+                          <Input
+                            id="cooperativeName"
+                            placeholder="e.g. Ahafo Cocoa Cooperative"
+                            {...register("personal.cooperativeName")}
+                            className="rounded-xl border-slate-300"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
                           <Label htmlFor="gender">Gender</Label>
                           <Select onValueChange={(v) => setValue("personal.gender", v)} defaultValue={getValues("personal.gender")}>
                             <SelectTrigger className="rounded-xl border-slate-300">
@@ -577,22 +665,40 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                         <div className="space-y-2 md:col-span-2">
                           <div className="flex items-center justify-between mb-2">
                             <Label htmlFor="lat">GPS Coordinates (Auto or Manual)</Label>
-                            <Button 
-                              type="button" 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={captureLocation}
-                              disabled={isLocating}
-                              className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold"
-                            >
-                              {isLocating ? (
-                                <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                              ) : (
-                                <Locate className="w-3.5 h-3.5 mr-2" />
-                              )}
-                              Capture Current Location
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={captureLocation}
+                                disabled={isLocating}
+                                className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold"
+                              >
+                                {isLocating ? (
+                                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                                ) : (
+                                  <Locate className="w-3.5 h-3.5 mr-2" />
+                                )}
+                                Capture GPS
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={refineGpsLocation}
+                                disabled={isLocating}
+                                className="h-8 rounded-lg border-slate-200 font-bold"
+                              >
+                                Refine
+                              </Button>
+                            </div>
                           </div>
+                          {gpsStatus ? <div className="text-xs font-bold text-slate-500">{gpsStatus}</div> : null}
+                          {gpsAccuracy !== null ? (
+                            <div className="text-xs font-bold text-slate-500">
+                              Accuracy: ~{Math.round(gpsAccuracy)}m{gpsBestAccuracy !== null ? ` · Best: ~${Math.round(gpsBestAccuracy)}m` : ""}
+                            </div>
+                          ) : null}
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Latitude</span>
@@ -616,6 +722,42 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                             </div>
                           </div>
                         </div>
+
+                        {(() => {
+                          const lat = watch("location.latitude");
+                          const lng = watch("location.longitude");
+                          if (lat === undefined || lat === null || lng === undefined || lng === null) return null;
+                          const latNum = Number(lat);
+                          const lngNum = Number(lng);
+                          if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return null;
+                          const delta = 0.01;
+                          const left = lngNum - delta;
+                          const right = lngNum + delta;
+                          const bottom = latNum - delta;
+                          const top = latNum + delta;
+                          const src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(
+                            `${left},${bottom},${right},${top}`,
+                          )}&layer=mapnik&marker=${encodeURIComponent(`${latNum},${lngNum}`)}`;
+                          const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${latNum},${lngNum}`)}`;
+                          return (
+                            <div className="space-y-2 md:col-span-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Map preview</Label>
+                                <a
+                                  href={mapsUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-bold text-primary underline"
+                                >
+                                  Open in Maps
+                                </a>
+                              </div>
+                              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                <iframe title="Farm location" src={src} className="h-64 w-full" loading="lazy" />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -645,7 +787,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                           {errors.farm?.farmName && <p className="text-red-500 text-[10px] mt-1">{errors.farm.farmName.message}</p>}
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2 md:col-span-2">
                           <Label htmlFor="farmSize">Farm Size</Label>
                           <div className="flex gap-2">
                             <Input 
@@ -656,7 +798,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                               className="rounded-xl border-slate-300 flex-1"
                             />
                             <Select onValueChange={(v) => setValue("farm.farmSizeUnit", v as any)} defaultValue={getValues("farm.farmSizeUnit")}>
-                              <SelectTrigger className="w-32 rounded-xl border-slate-300">
+                              <SelectTrigger className="w-40 rounded-xl border-slate-300">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -725,33 +867,73 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                           <Label htmlFor="primaryCrop">Primary Crop</Label>
-                          <Input 
-                            id="primaryCrop" 
-                            placeholder="e.g. Cocoa, Maize, Rice" 
-                            {...register("crops.primaryCrop")}
-                            className="rounded-xl border-slate-300"
-                          />
+                          <Select
+                            value={watch("crops.primaryCrop")}
+                            onValueChange={(v) => setValue("crops.primaryCrop", v)}
+                          >
+                            <SelectTrigger className="rounded-xl border-slate-300">
+                              <SelectValue placeholder="Select crop" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CROP_OPTIONS.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           {errors.crops?.primaryCrop && <p className="text-red-500 text-[10px] mt-1">{errors.crops.primaryCrop.message}</p>}
                         </div>
 
                         <div className="space-y-2 md:col-span-2">
                           <Label htmlFor="secondaryCrops">Secondary Crops (optional)</Label>
-                          <Input
-                            id="secondaryCrops"
-                            placeholder="e.g. Groundnut, Soybean"
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const crops = raw
-                                .split(",")
-                                .map((s) => s.trim())
-                                .filter(Boolean);
-                              setValue("crops.secondaryCrops", crops);
-                            }}
-                            className="rounded-xl border-slate-300"
-                          />
-                          <p className="text-[10px] text-muted-foreground font-medium">
-                            Separate multiple crops with commas.
-                          </p>
+                          <div className="flex flex-col gap-3">
+                            <div className="flex gap-2">
+                              <Select value={secondaryCropDraft} onValueChange={setSecondaryCropDraft}>
+                                <SelectTrigger className="rounded-xl border-slate-300 flex-1">
+                                  <SelectValue placeholder="Select and add" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CROP_OPTIONS.filter((c) => c !== watch("crops.primaryCrop")).map((c) => (
+                                    <SelectItem key={c} value={c}>
+                                      {c}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => {
+                                  const value = secondaryCropDraft;
+                                  if (!value) return;
+                                  const existing = watch("crops.secondaryCrops") || [];
+                                  if (!existing.includes(value)) {
+                                    setValue("crops.secondaryCrops", [...existing, value]);
+                                  }
+                                  setSecondaryCropDraft("");
+                                }}
+                              >
+                                Add
+                              </Button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {(watch("crops.secondaryCrops") || []).map((c) => (
+                                <Badge
+                                  key={c}
+                                  variant="secondary"
+                                  className="rounded-full cursor-pointer"
+                                  onClick={() => {
+                                    const next = (watch("crops.secondaryCrops") || []).filter((x) => x !== c);
+                                    setValue("crops.secondaryCrops", next);
+                                  }}
+                                >
+                                  {c}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -890,6 +1072,24 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                               </div>
                               <div className="space-y-2 md:col-span-2">
                                 <Label>Document (optional)</Label>
+                                <Input
+                                  type="file"
+                                  accept="application/pdf,image/jpeg,image/png"
+                                  className="rounded-xl bg-white"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0] ?? null;
+                                    if (!file) return;
+                                    try {
+                                      const url = await uploadFile(file, "certs");
+                                      setValue(`certifications.${index}.documentUrl` as const, url);
+                                      toast.success("Document uploaded");
+                                    } catch (err: any) {
+                                      toast.error(err?.message || "Failed to upload document");
+                                    } finally {
+                                      e.currentTarget.value = "";
+                                    }
+                                  }}
+                                />
                                 <Input
                                   {...register(`certifications.${index}.documentUrl` as const)}
                                   placeholder="Paste a PDF/JPG/PNG link (or data: URI)"

@@ -53,7 +53,18 @@ type ProductionRecordOption = {
   cropType: string;
   cropVariety: string | null;
   status: string;
+  expectedHarvestDate?: string | null;
+  actualHarvestDate?: string | null;
 };
+
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  try {
+    return new Date(value).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
 
 type HarvestRow = {
   id: string;
@@ -98,9 +109,36 @@ type FormState = {
   moistureReading: string;
   supervisorApproved: boolean;
   supervisorName: string;
-  photosJson: string;
+  photoUrls: string[];
   notes: string;
 };
+
+function normalizePhotoUrls(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    const strings = value.filter((x) => typeof x === "string") as string[];
+    if (strings.length) return strings;
+    const urls = value
+      .map((x) => (typeof x === "object" && x && typeof (x as any).url === "string" ? String((x as any).url) : null))
+      .filter(Boolean) as string[];
+    return urls;
+  }
+  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+  if (typeof value === "object") {
+    const v = value as any;
+    if (Array.isArray(v.urls)) return v.urls.filter((x: unknown) => typeof x === "string") as string[];
+  }
+  return [];
+}
+
+function toProxyUrlIfSupabasePublic(url: string): string {
+  const trimmed = url.trim();
+  const match = trimmed.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+  if (!match) return trimmed;
+  const bucket = match[1];
+  const key = decodeURIComponent(match[2]);
+  return `/api/uploads/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
+}
 
 function farmerLabel(f: FarmerOption) {
   const c = f.community;
@@ -143,6 +181,7 @@ export function HarvestClient({
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [edit, setEdit] = useState<HarvestRow | null>(null);
 
   const [form, setForm] = useState<FormState>({
@@ -160,7 +199,7 @@ export function HarvestClient({
     moistureReading: "",
     supervisorApproved: false,
     supervisorName: "",
-    photosJson: "",
+    photoUrls: [],
     notes: "",
   });
 
@@ -215,10 +254,38 @@ export function HarvestClient({
       moistureReading: "",
       supervisorApproved: false,
       supervisorName: "",
-      photosJson: "",
+      photoUrls: [],
       notes: "",
     });
     setEdit(null);
+  };
+
+  const uploadHarvestPhotos = async (files: File[]) => {
+    if (!files.length) return;
+    setUploadingPhotos(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.set("file", file);
+        formData.set("kind", "photos");
+        const res = await apiFetch("/api/uploads/image", { method: "POST", body: formData });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.message || "Upload failed");
+        const url = json?.url ? String(json.url) : "";
+        if (!url) throw new Error("Upload failed");
+        uploaded.push(url);
+      }
+      setForm((prev) => ({
+        ...prev,
+        photoUrls: [...prev.photoUrls, ...uploaded].map(toProxyUrlIfSupabasePublic),
+      }));
+      toast.success(`Uploaded ${uploaded.length} photo${uploaded.length === 1 ? "" : "s"}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload photos");
+    } finally {
+      setUploadingPhotos(false);
+    }
   };
 
   const openCreate = () => {
@@ -227,6 +294,7 @@ export function HarvestClient({
       const pr = context.productionRecordId
         ? initialProductionRecords.find((x) => x.id === context.productionRecordId)
         : null;
+      const prHarvest = pr?.actualHarvestDate || pr?.expectedHarvestDate;
       setForm((prev) => ({
         ...prev,
         farmerId: context.farmerId,
@@ -234,6 +302,7 @@ export function HarvestClient({
         productionRecordId: context.productionRecordId ? String(context.productionRecordId) : "",
         crop: pr?.cropType || prev.crop,
         variety: pr?.cropVariety || prev.variety,
+        harvestDate: prHarvest ? toDateInputValue(prHarvest) : prev.harvestDate,
       }));
     }
     setOpen(true);
@@ -256,7 +325,7 @@ export function HarvestClient({
       moistureReading: h.moistureReading !== null && h.moistureReading !== undefined ? String(h.moistureReading) : "",
       supervisorApproved: !!h.supervisorApproved,
       supervisorName: h.supervisorName || "",
-      photosJson: h.photos ? JSON.stringify(h.photos, null, 2) : "",
+      photoUrls: normalizePhotoUrls(h.photos).map(toProxyUrlIfSupabasePublic),
       notes: h.notes || "",
     });
     setOpen(true);
@@ -289,17 +358,7 @@ export function HarvestClient({
 
     setSaving(true);
     try {
-      let photos: unknown = null;
-      const raw = form.photosJson.trim();
-      if (raw) {
-        try {
-          photos = JSON.parse(raw);
-        } catch {
-          toast.error("Photos JSON is invalid — fix or clear it.");
-          setSaving(false);
-          return;
-        }
-      }
+      const photos = form.photoUrls.length ? form.photoUrls : null;
 
       const payload: any = {
         farmerId: form.farmerId,
@@ -319,6 +378,7 @@ export function HarvestClient({
         supervisorName: form.supervisorName.trim() || null,
         notes: form.notes.trim() || null,
       };
+
 
       if (edit) {
         delete payload.farmerId;
@@ -475,6 +535,29 @@ export function HarvestClient({
                 {h.supervisorName ? <div>Supervisor: {h.supervisorName}</div> : null}
                 {h.notes ? <div>Notes: {h.notes}</div> : null}
               </div>
+
+              {(() => {
+                const urls = normalizePhotoUrls(h.photos).map(toProxyUrlIfSupabasePublic);
+                if (!urls.length) return null;
+                return (
+                  <div className="pt-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Photos</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {urls.slice(0, 6).map((url) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                        >
+                          <img src={url} alt="Harvest" className="h-20 w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         ))}
@@ -549,11 +632,13 @@ export function HarvestClient({
                     onValueChange={(v) => {
                       const next = v === "__none__" ? "" : v;
                       const pr = initialProductionRecords.find((x) => x.id === next);
+                      const prHarvest = pr?.actualHarvestDate || pr?.expectedHarvestDate;
                       setForm((prev) => ({
                         ...prev,
                         productionRecordId: next,
                         crop: pr?.cropType || prev.crop,
                         variety: pr?.cropVariety || prev.variety,
+                        harvestDate: prHarvest ? toDateInputValue(prHarvest) : prev.harvestDate,
                       }));
                     }}
                     disabled={!!context?.productionRecordId}
@@ -576,10 +661,23 @@ export function HarvestClient({
 
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Harvest date *</Label>
+                  {(() => {
+                    const pr = form.productionRecordId
+                      ? initialProductionRecords.find((x) => x.id === form.productionRecordId)
+                      : null;
+                    const locked = Boolean(pr?.actualHarvestDate || pr?.expectedHarvestDate);
+                    const hint = pr?.actualHarvestDate ? "From cycle harvest date" : pr?.expectedHarvestDate ? "From cycle expected harvest" : "";
+                    return locked && hint ? <div className="text-[10px] font-bold text-slate-500">{hint}</div> : null;
+                  })()}
                   <Input
                     type="date"
                     value={form.harvestDate}
                     onChange={(e) => setForm((prev) => ({ ...prev, harvestDate: e.target.value }))}
+                    readOnly={Boolean(
+                      form.productionRecordId &&
+                        (initialProductionRecords.find((x) => x.id === form.productionRecordId)?.actualHarvestDate ||
+                          initialProductionRecords.find((x) => x.id === form.productionRecordId)?.expectedHarvestDate),
+                    )}
                     className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
@@ -708,14 +806,59 @@ export function HarvestClient({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Photos (optional, JSON)</Label>
-                  <Textarea
-                    value={form.photosJson}
-                    onChange={(e) => setForm((prev) => ({ ...prev, photosJson: e.target.value }))}
-                    rows={3}
-                    className="rounded-xl bg-slate-50 border-slate-200 font-mono text-sm p-3"
-                    placeholder='Example: [{"url":"https://...","type":"HARVEST_PHOTO"}]'
-                  />
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Harvest photos (optional)</Label>
+                  <div className="space-y-3">
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      multiple
+                      disabled={uploadingPhotos}
+                      className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                      onChange={async (e) => {
+                        const input = e.currentTarget;
+                        const files = Array.from(input.files || []);
+                        if (!files.length) return;
+                        await uploadHarvestPhotos(files);
+                        if (input && input.isConnected) input.value = "";
+                      }}
+                    />
+
+                    {form.photoUrls.length ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {form.photoUrls.map((url, idx) => (
+                            <Badge
+                              key={url}
+                              variant="secondary"
+                              className="rounded-full cursor-pointer"
+                              onClick={() =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  photoUrls: prev.photoUrls.filter((x) => x !== url),
+                                }))
+                              }
+                              title="Click to remove"
+                            >
+                              {`Photo ${idx + 1}`}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {form.photoUrls.slice(0, 6).map((url) => (
+                            <a
+                              key={url}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                            >
+                              <img src={url} alt="Harvest" className="h-20 w-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="space-y-2 md:col-span-2">

@@ -16,12 +16,21 @@ function isValidPostgresUrl(value: string | undefined): value is string {
   }
 }
 
+function removeQueryParam(url: string, param: string): string {
+  const u = new URL(url);
+  u.searchParams.delete(param);
+  return u.toString();
+}
+
 const poolerUrl = process.env.DATABASE_URL_POOLER;
 const directUrl = process.env.DATABASE_URL;
 const connectionString = isValidPostgresUrl(poolerUrl) ? poolerUrl : directUrl;
+const isSupabaseUrl = Boolean(
+  connectionString && (connectionString.includes("supabase.co") || connectionString.includes("supabase.com")),
+);
 const shouldUseSsl = Boolean(
   connectionString &&
-    (connectionString.includes("supabase.co") ||
+    (isSupabaseUrl ||
       connectionString.includes("sslmode=require") ||
       connectionString.includes("sslmode=verify-ca") ||
       connectionString.includes("sslmode=verify-full")),
@@ -57,7 +66,7 @@ export const prisma: PrismaClient =
           adapter: new PrismaPg(
             shouldUseSsl
               ? {
-                  connectionString,
+                  connectionString: removeQueryParam(connectionString, "sslmode"),
                   ssl: { rejectUnauthorized },
                   connectionTimeoutMillis: 8000,
                   idleTimeoutMillis: 15000,

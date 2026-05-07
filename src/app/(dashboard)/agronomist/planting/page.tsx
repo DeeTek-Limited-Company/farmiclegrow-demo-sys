@@ -59,6 +59,7 @@ export default async function AgronomistPlantingPage() {
       initialFarmers={JSON.parse(JSON.stringify(farmers))}
       initialPlots={JSON.parse(JSON.stringify(plots))}
       initialProductionRecords={JSON.parse(JSON.stringify(productionRecords))}
+      currentUserName={user.name}
     />
   );
 }
