@@ -46,18 +46,18 @@ export function Header({
       .toUpperCase();
   };
 
-  const getRoleColor = (role: string) => {
+  const getRoleAvatarStyles = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'bg-red-500';
-      case 'agronomist':
-        return 'bg-blue-500';
-      case 'farmer':
-        return 'bg-primary';
+        return { avatar: 'bg-accent', text: 'text-accent-foreground' };
+      case 'ops':
+        return { avatar: 'bg-accent', text: 'text-accent-foreground' };
       default:
-        return 'bg-gray-500';
+        return { avatar: 'bg-primary', text: 'text-primary-foreground' };
     }
   };
+
+  const avatarStyles = getRoleAvatarStyles(userRole);
 
   return (
     <div className="flex items-center justify-between w-full gap-4">
@@ -75,12 +75,12 @@ export function Header({
 
         <div className="flex lg:hidden items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center p-1.5 shadow-sm border border-slate-100">
-            <Image 
-              src="/logo.png" 
-              alt="FarmicleGrow Logo" 
-              width={32} 
-              height={32} 
-              className="w-full h-full object-contain" 
+            <Image
+              src="/logo.png"
+              alt="FarmicleGrow Logo"
+              width={32}
+              height={32}
+              className="w-full h-full object-contain"
             />
           </div>
           <span className="font-black text-primary tracking-tighter text-lg">Farmicle</span>
@@ -92,14 +92,14 @@ export function Header({
             placeholder="Search records..."
             aria-label="Search records"
             onChange={(e) => onSearch?.(e.target.value)}
-            className="h-10 pl-9 bg-muted/50 border-none focus-visible:ring-primary/20 rounded-xl"
+            className="h-10 pl-9 bg-muted/60 border border-border/60 focus-visible:ring-primary/20 rounded-2xl shadow-sm"
           />
         </div>
       </div>
 
       {/* Right Side - Notifications and Avatar */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-2xl border border-border/50">
+        <div className="flex items-center gap-1 bg-card/50 backdrop-blur-xl p-1 rounded-2xl border border-border/60 shadow-[0_18px_50px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_18px_50px_-40px_rgba(0,0,0,0.7)]">
           <NotificationBell userRole={userRole} />
 
           <DropdownMenu>
@@ -107,10 +107,10 @@ export function Header({
               <Button
                 variant="ghost"
                 aria-label="User menu"
-                className="hidden md:flex items-center gap-2 h-10 px-3 rounded-xl hover:bg-white/80 transition-all shadow-sm"
+                className="hidden md:flex items-center gap-2 h-10 px-3 rounded-2xl hover:bg-white/60 dark:hover:bg-white/5 transition-all shadow-sm"
               >
-                <Avatar className={`w-8 h-8 ${getRoleColor(userRole)} shadow-sm`}>
-                  <AvatarFallback className="text-white text-[10px] font-black uppercase tracking-tighter">
+                <Avatar className={`w-8 h-8 ${avatarStyles.avatar} shadow-sm`}>
+                  <AvatarFallback className={`${avatarStyles.text} text-[10px] font-black uppercase tracking-tighter`}>
                     {getInitials(userName)}
                   </AvatarFallback>
                 </Avatar>
@@ -125,8 +125,8 @@ export function Header({
             <DropdownMenuContent align="end" className="w-64 p-2 rounded-2xl shadow-xl border-border/50">
               <DropdownMenuLabel className="px-3 py-3">
                 <div className="flex items-center gap-3">
-                  <Avatar className={`w-10 h-10 ${getRoleColor(userRole)}`}>
-                    <AvatarFallback className="text-white text-xs font-black">
+                  <Avatar className={`w-10 h-10 ${avatarStyles.avatar}`}>
+                    <AvatarFallback className={`${avatarStyles.text} text-xs font-black`}>
                       {getInitials(userName)}
                     </AvatarFallback>
                   </Avatar>

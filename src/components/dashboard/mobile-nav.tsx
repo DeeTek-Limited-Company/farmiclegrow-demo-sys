@@ -78,7 +78,7 @@ export function MobileNav({ userRole }: { userRole?: string }) {
 
   return (
     <div className="lg:hidden fixed bottom-6 left-0 right-0 z-50 px-6">
-      <nav className="bg-slate-900/90 backdrop-blur-xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-[2.5rem] flex items-center justify-between p-2 h-20 relative">
+      <nav className="bg-[linear-gradient(180deg,#14532D_0%,#0B2713_100%)] backdrop-blur-xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.35)] rounded-[2.5rem] flex items-center justify-between p-2 h-20 relative">
         {navItems.map((item, index) => {
           const isActive = pathname === item.href.split('?')[0];
           
@@ -90,10 +90,10 @@ export function MobileNav({ userRole }: { userRole?: string }) {
                 className="relative -top-8"
               >
                 <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-primary shadow-xl shadow-primary/40 flex items-center justify-center text-white border-4 border-slate-900 transition-transform active:scale-90 duration-300">
+                  <div className="w-16 h-16 rounded-full bg-accent shadow-xl shadow-accent/30 flex items-center justify-center text-accent-foreground border-4 border-[#0B2713] transition-transform active:scale-90 duration-300">
                     <item.icon className="w-8 h-8" strokeWidth={3} />
                   </div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-primary mt-2 absolute -bottom-5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-accent mt-2 absolute -bottom-5">
                     {item.label}
                   </span>
                 </div>
@@ -107,7 +107,7 @@ export function MobileNav({ userRole }: { userRole?: string }) {
               href={item.href}
               className={cn(
                 "flex flex-col items-center justify-center transition-all duration-300 px-3 py-2 rounded-2xl min-w-[64px]",
-                isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
+                isActive ? "text-white" : "text-white/70 hover:text-white"
               )}
             >
               <item.icon className={cn("w-6 h-6 mb-1 transition-transform", isActive && "scale-110")} />
