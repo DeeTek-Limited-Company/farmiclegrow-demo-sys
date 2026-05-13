@@ -396,6 +396,9 @@ export function AgronomistProductionView({
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
+              {filtered.map((record) => {
+                const config = getStatusConfig(record.status);
+                return (
                   <div
                     key={record.id}
                     className={`p-6 hover:bg-slate-50/30 transition-all group ${selectedRecordId === record.id ? "bg-slate-50/40" : ""}`}
