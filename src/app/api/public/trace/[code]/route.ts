@@ -20,7 +20,8 @@ type TraceEvent =
   | { type: "WAREHOUSE_OUT"; at: string; details: Record<string, unknown> }
   | { type: "DISPATCH"; at: string; details: Record<string, unknown> }
   | { type: "ARRIVAL"; at: string; details: Record<string, unknown> }
-  | { type: "SALE"; at: string; details: Record<string, unknown> };
+  | { type: "SALE"; at: string; details: Record<string, unknown> }
+  | { type: "MILESTONE"; at: string; details: Record<string, unknown> };
 
 function toIso(value: Date) {
   return value.toISOString();
@@ -76,6 +77,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
       movementLogs: { orderBy: { dispatchDate: "asc" } },
       warehouseEntries: { orderBy: { dateIn: "asc" } },
       salesRecords: { orderBy: { dateSold: "asc" } },
+      milestones: { orderBy: { timestamp: "asc" } },
     },
   });
 
@@ -192,6 +194,20 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
         destination: sale.destination ?? null,
         quantitySold: sale.quantitySold ? Number(sale.quantitySold) : null,
         paymentStatus: sale.paymentStatus ?? null,
+      },
+    });
+  }
+  
+  for (const milestone of batch.milestones) {
+    events.push({
+      type: "MILESTONE",
+      at: toIso(milestone.timestamp),
+      details: {
+        milestoneType: milestone.type,
+        status: milestone.status,
+        location: milestone.location ?? null,
+        notes: milestone.notes ?? null,
+        performedBy: milestone.performedBy ?? null,
       },
     });
   }

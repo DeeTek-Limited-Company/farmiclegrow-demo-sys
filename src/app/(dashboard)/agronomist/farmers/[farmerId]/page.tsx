@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 import { FarmerLiveActivity } from "@/components/shared/farmer-live-activity";
+import { EditFarmerButton } from "@/components/agronomist/edit-farmer-button";
 
 interface PageProps {
   params: Promise<{ farmerId: string }>;
@@ -83,6 +84,7 @@ export default async function FarmerProfilePage({ params }: PageProps) {
       productionRecords: {
         orderBy: { createdAt: "desc" },
       },
+      certifications: true,
       documents: {
         orderBy: { createdAt: "desc" },
       },
@@ -168,9 +170,7 @@ export default async function FarmerProfilePage({ params }: PageProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="rounded-2xl border-slate-200 font-bold h-12 px-6 shadow-sm">
-            Edit Profile
-          </Button>
+          <EditFarmerButton farmer={JSON.parse(JSON.stringify(farmer))} />
           <Button className="rounded-2xl font-bold h-12 px-6 shadow-xl shadow-primary/20">
             <TrendingUp className="w-4 h-4 mr-2" />
             Add Record

@@ -105,6 +105,18 @@ export default async function AdminPage() {
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
+    prisma.batch.findMany({
+      where: {
+        marketplaceListing: null
+      },
+      include: {
+        farmer: true,
+        productionRecord: true
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10
+    }),
+    prisma.marketplaceListing.count()
   ]) as unknown as [
       number,
       number,
@@ -129,6 +141,8 @@ export default async function AdminPage() {
       any[],
       any[],
       any[],
+      any[],
+      number,
     ];
 
   const [
@@ -153,7 +167,9 @@ export default async function AdminPage() {
     lowQualityFarmers,
     plannedStaleCycles,
     activeNoPlantingCycles,
-    harvestedNoBatchCycles
+    harvestedNoBatchCycles,
+    unlistedBatches,
+    activeListingsCount
   ] = results;
   const serializedPendingSubmissions = JSON.parse(JSON.stringify(pendingSubmissions));
 
@@ -204,6 +220,7 @@ export default async function AdminPage() {
         <KpiCard title="Batches" value={totalBatches.toLocaleString()} href="/agronomist/batches" tone="slate" icon={<Package className="w-4 h-4" />} />
         <KpiCard title="Unvalidated GPS" value={unvalidatedLocationsCount.toLocaleString()} href="/agronomist/locations" tone="amber" icon={<MapPin className="w-4 h-4" />} />
         <KpiCard title="Avg Quality" value={`${avgQuality}/100`} href="/admin/farmers" tone="emerald" icon={<ShieldCheck className="w-4 h-4" />} />
+        <KpiCard title="Market Listings" value={activeListingsCount.toLocaleString()} href="/admin/inventory" tone="blue" icon={<TrendingUp className="w-4 h-4" />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -258,7 +275,7 @@ export default async function AdminPage() {
 
       <AnalyticsCharts registrationData={registrationData} cropData={cropData} currentYieldTon={totalYield} targetYieldTon={annualTargetTon} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Unvalidated Locations</CardTitle>
@@ -270,8 +287,8 @@ export default async function AdminPage() {
               unvalidatedLocations.map((loc: any) => (
                 <div key={loc.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{loc.farmProfile.farmer.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
+                    <div className="font-bold truncate text-sm">{loc.farmProfile.farmer.fullName}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
                       {loc.farmProfile.farmName} · {Number(loc.latitude).toFixed(4)}, {Number(loc.longitude).toFixed(4)}
                     </div>
                   </div>
@@ -279,10 +296,10 @@ export default async function AdminPage() {
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
               <Link href="/agronomist/locations">
                 View all
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>
@@ -290,7 +307,7 @@ export default async function AdminPage() {
 
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Harvest → Batch Backlog</CardTitle>
+            <CardTitle className="text-lg">Harvest → Batch</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {harvestBacklog.length === 0 ? (
@@ -299,24 +316,23 @@ export default async function AdminPage() {
               harvestBacklog.map((r: any) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{r.farmer.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
-                      {r.cropType} · {r.season} · Remaining {Number(r.remaining).toFixed(2)}T
+                    <div className="font-bold truncate text-sm">{r.farmer.fullName}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
+                      {r.cropType} · {r.season} · {Number(r.remaining).toFixed(1)}T
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="rounded-xl font-bold">
+                  <Button asChild variant="outline" className="rounded-xl font-bold h-8 text-xs px-3">
                     <Link href="/agronomist/batches">
                       Create
-                      <ArrowUpRight className="w-4 h-4 ml-2" />
                     </Link>
                   </Button>
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
               <Link href="/agronomist/batches">
                 Open batches
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>
@@ -324,33 +340,32 @@ export default async function AdminPage() {
 
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Low Quality Profiles</CardTitle>
+            <CardTitle className="text-lg">Unlisted Inventory</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {lowQualityFarmers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No low-quality farmers under threshold.</p>
+            {unlistedBatches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No unlisted batches.</p>
             ) : (
-              lowQualityFarmers.map((f: any) => (
-                <div key={f.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
+              unlistedBatches.map((b: any) => (
+                <div key={b.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{f.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
-                      Quality {f.qualityScore}/100 · {f.submissions[0]?.status ?? "NO STATUS"}
+                    <div className="font-bold truncate text-sm">{b.batchId}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
+                      {b.productionRecord.cropType} · {Number(b.quantity).toFixed(1)}T · {b.farmer.fullName}
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="rounded-xl font-bold">
-                    <Link href="/admin/farmers">
-                      Review
-                      <ArrowUpRight className="w-4 h-4 ml-2" />
+                  <Button asChild variant="outline" className="rounded-xl font-bold h-8 text-xs px-3">
+                    <Link href={`/admin/inventory/new?batchId=${b.id}`}>
+                      List
                     </Link>
                   </Button>
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
-              <Link href="/admin/farmers">
-                View farmers
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
+              <Link href="/admin/inventory">
+                View inventory
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>
@@ -358,41 +373,42 @@ export default async function AdminPage() {
 
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Planned → No Planting</CardTitle>
+            <CardTitle className="text-lg">Stale Cycles</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {plannedStaleCycles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No stale planned cycles detected.</p>
+              <p className="text-sm text-muted-foreground">No stale cycles.</p>
             ) : (
               plannedStaleCycles.map((r: any) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{r.farmer.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
-                      {r.cropType} · {r.season} · Planned {format(new Date(r.createdAt), "MMM d")}
+                    <div className="font-bold truncate text-sm">{r.farmer.fullName}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
+                      {r.cropType} · Planned {format(new Date(r.createdAt), "MMM d")}
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="rounded-xl font-bold">
+                  <Button asChild variant="outline" className="rounded-xl font-bold h-8 text-xs px-3">
                     <Link href={`/admin/farmers/${r.farmerId}`}>
                       Open
-                      <ArrowUpRight className="w-4 h-4 ml-2" />
                     </Link>
                   </Button>
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
               <Link href="/agronomist/production">
-                Open cycles
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+                All cycles
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Active → Missing Planting</CardTitle>
+            <CardTitle className="text-lg">Missing Planting Records</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {activeNoPlantingCycles.length === 0 ? (
@@ -401,24 +417,23 @@ export default async function AdminPage() {
               activeNoPlantingCycles.map((r: any) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{r.farmer.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
+                    <div className="font-bold truncate text-sm">{r.farmer.fullName}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
                       {r.cropType} · {r.season} · Active {format(new Date(r.createdAt), "MMM d")}
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="rounded-xl font-bold">
+                  <Button asChild variant="outline" className="rounded-xl font-bold h-8 text-xs px-3">
                     <Link href={`/admin/farmers/${r.farmerId}`}>
                       Open
-                      <ArrowUpRight className="w-4 h-4 ml-2" />
                     </Link>
                   </Button>
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
               <Link href="/agronomist/production">
                 Open cycles
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>
@@ -435,24 +450,23 @@ export default async function AdminPage() {
               harvestedNoBatchCycles.map((r: any) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 border rounded-xl p-3">
                   <div className="min-w-0">
-                    <div className="font-bold truncate">{r.farmer.fullName}</div>
-                    <div className="text-xs text-muted-foreground font-medium truncate">
+                    <div className="font-bold truncate text-sm">{r.farmer.fullName}</div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
                       {r.cropType} · {r.season}
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="rounded-xl font-bold">
+                  <Button asChild variant="outline" className="rounded-xl font-bold h-8 text-xs px-3">
                     <Link href="/agronomist/batches">
                       Create
-                      <ArrowUpRight className="w-4 h-4 ml-2" />
                     </Link>
                   </Button>
                 </div>
               ))
             )}
-            <Button asChild variant="outline" className="w-full rounded-xl font-bold">
+            <Button asChild variant="outline" className="w-full rounded-xl font-bold h-8 text-xs">
               <Link href="/agronomist/batches">
                 Open batches
-                <ArrowUpRight className="w-4 h-4 ml-2" />
+                <ArrowUpRight className="w-3 h-3 ml-2" />
               </Link>
             </Button>
           </CardContent>

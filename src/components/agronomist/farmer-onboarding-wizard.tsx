@@ -53,7 +53,7 @@ const steps = [
   { id: "review", title: "Review", description: "Final verification", icon: CheckCircle2 },
 ];
 
-export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void }) {
+export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: () => void, initialData?: any }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -172,14 +172,50 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     formState: { errors },
   } = useForm<FarmerOnboardingData>({
     // Removed global resolver to prevent full-form validation on each step
-    defaultValues: {
-      personal: { fullName: "", phone: "", email: "", cooperativeName: "", gender: "Male", ghanaCardPhotoUrl: "" },
+    defaultValues: initialData ? {
+      personal: {
+        fullName: initialData.fullName || "",
+        phone: initialData.phone || "",
+        email: initialData.email || "",
+        cooperativeName: initialData.cooperativeName || "",
+        gender: initialData.gender || "Male",
+        dateOfBirth: initialData.dateOfBirth ? new Date(initialData.dateOfBirth).toISOString().split('T')[0] : "",
+        ghanaCardNumber: initialData.ghanaCardNumber || "",
+        bio: initialData.bio || "",
+        ghanaCardPhotoUrl: initialData.ghanaCardPhotoUrl || ""
+      },
+      location: {
+        districtId: initialData.community?.districtId || "",
+        communityId: initialData.communityId || "",
+        region: initialData.community?.district?.region?.name || "",
+        district: initialData.community?.district?.name || "",
+        community: initialData.community?.name || "",
+        latitude: initialData.farmProfiles?.[0]?.locations?.[0]?.latitude || undefined,
+        longitude: initialData.farmProfiles?.[0]?.locations?.[0]?.longitude || undefined,
+      },
+      farm: {
+        farmName: initialData.farmProfiles?.[0]?.farmName || "",
+        farmSize: Number(initialData.farmProfiles?.[0]?.farmSize) || 0,
+        farmSizeUnit: initialData.farmProfiles?.[0]?.farmSizeUnit || "acres",
+        ownershipType: initialData.farmProfiles?.[0]?.ownershipType || "Owned",
+        irrigationType: initialData.farmProfiles?.[0]?.irrigationType || "Rain-fed",
+        farmSitePhotoUrl: initialData.farmProfiles?.[0]?.farmSitePhotoUrl || ""
+      },
+      crops: {
+        primaryCrop: initialData.primaryCrop || "",
+        secondaryCrops: initialData.secondaryCrops || []
+      },
+      certifications: initialData.certifications || [],
+    } : {
+      personal: { fullName: "", phone: "", email: "", cooperativeName: "", gender: "Male", ghanaCardPhotoUrl: "", bio: "", dateOfBirth: "", ghanaCardNumber: "" },
       location: { districtId: "", communityId: "", region: "", district: "", community: "" },
       farm: { farmName: "", farmSize: 0, farmSizeUnit: "acres", ownershipType: "Owned", irrigationType: "Rain-fed", farmSitePhotoUrl: "" },
       crops: { primaryCrop: "", secondaryCrops: [] },
       certifications: [],
     },
   });
+
+  const isFirstLoadRef = useRef(true);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -231,18 +267,28 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
   const onSubmit = async (data: FarmerOnboardingData) => {
     setIsSubmitting(true);
     try {
-      const response = await apiFetch("/api/farmers", {
-        method: "POST",
+      const method = initialData ? "PUT" : "POST";
+      const url = initialData ? `/api/farmers/${initialData.id}` : "/api/farmers";
+
+      const payload = {
+        ...data.personal,
+        ...data.farm,
+        districtId: data.location.districtId,
+        communityId: data.location.communityId,
+        location: data.location,
+        crops: data.crops,
+        certifications: data.certifications,
+        // Flatten crops for PUT schema
+        ...(initialData ? {
+          primaryCrop: data.crops.primaryCrop,
+          secondaryCrops: data.crops.secondaryCrops,
+        } : {})
+      };
+
+      const response = await apiFetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data.personal,
-          ...data.farm,
-          districtId: data.location.districtId,
-          communityId: data.location.communityId,
-          location: data.location,
-          crops: data.crops,
-          certifications: data.certifications,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -252,7 +298,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
 
       const result = await response.json();
 
-      if (result.tempPassword) {
+      if (!initialData && result.tempPassword) {
         // Show credentials screen before closing
         setCredentials({
           email: result.email,
@@ -260,7 +306,7 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
           farmerName: result.farmer?.fullName ?? data.personal.fullName,
         });
       } else {
-        toast.success("Farmer onboarded successfully!");
+        toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
         onSuccess();
       }
     } catch (error: any) {
@@ -324,7 +370,11 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
       setDistrictsLoading(true);
       try {
         const res = await apiFetch("/api/districts");
-        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.message || `Failed to load districts (${res.status})`);
+        }
+        const json = await res.json();
         setDistricts(json.districts || []);
       } catch (e: any) {
         toast.error(e?.message || "Failed to load districts");
@@ -341,8 +391,10 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
     const loadCommunities = async () => {
       if (!selectedDistrictId) {
         setCommunities([]);
-        setValue("location.communityId", "");
-        setValue("location.community", "");
+        if (!isFirstLoadRef.current) {
+          setValue("location.communityId", "");
+          setValue("location.community", "");
+        }
         return;
       }
 
@@ -355,14 +407,22 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
       setCommunitiesLoading(true);
       try {
         const res = await apiFetch(`/api/communities?districtId=${encodeURIComponent(selectedDistrictId)}`);
-        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.message || `Failed to load communities (${res.status})`);
+        }
+        const json = await res.json();
         setCommunities((json.communities || []).map((c: any) => ({ id: c.id, name: c.name, districtId: c.districtId })));
-        setValue("location.communityId", "");
-        setValue("location.community", "");
+        
+        if (!isFirstLoadRef.current) {
+          setValue("location.communityId", "");
+          setValue("location.community", "");
+        }
       } catch (e: any) {
         toast.error(e?.message || "Failed to load communities");
       } finally {
         setCommunitiesLoading(false);
+        isFirstLoadRef.current = false;
       }
     };
     void loadCommunities();
@@ -581,6 +641,16 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                             <p className="text-[10px] text-muted-foreground mt-1">Format: GHA-XXXXXXXXX-X</p>
                           )}
                         </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="bio">Farmer Bio (Optional)</Label>
+                          <Textarea 
+                            id="bio" 
+                            placeholder="Briefly describe the farmer's history, experience, or specialized knowledge..." 
+                            {...register("personal.bio")}
+                            className="rounded-xl border-slate-300 min-h-[100px]"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -609,11 +679,17 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                               <SelectValue placeholder={districtsLoading ? "Loading..." : "Select district"} />
                             </SelectTrigger>
                             <SelectContent>
-                              {districts.map((d) => (
-                                <SelectItem key={d.id} value={d.id}>
-                                  {d.region.name} · {d.name}
-                                </SelectItem>
-                              ))}
+                              {districts.length === 0 ? (
+                                <div className="p-4 text-xs font-bold text-slate-500 text-center">
+                                  No districts available. Ask an admin to assign you to a district.
+                                </div>
+                              ) : (
+                                districts.map((d) => (
+                                  <SelectItem key={d.id} value={d.id}>
+                                    {d.region.name} · {d.name}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                           {errors.location?.districtId && <p className="text-red-500 text-[10px] mt-1">{errors.location.districtId.message}</p>}
@@ -642,11 +718,17 @@ export function FarmerOnboardingWizard({ onSuccess }: { onSuccess: () => void })
                               />
                             </SelectTrigger>
                             <SelectContent>
-                              {communities.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.name}
-                                </SelectItem>
-                              ))}
+                              {communities.length === 0 ? (
+                                <div className="p-4 text-xs font-bold text-slate-500 text-center">
+                                  No communities found for this district.
+                                </div>
+                              ) : (
+                                communities.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                           {errors.location?.communityId && <p className="text-red-500 text-[10px] mt-1">{errors.location.communityId.message}</p>}
