@@ -1,4 +1,4 @@
-import { requireApiRole } from "@/lib/auth/server";
+import { requireApiRole } from "@/lib/auth/guards";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -23,7 +23,11 @@ export async function POST(
   { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
-    const user = await requireApiRole(["admin", "agronomist", "ops"]);
+    const auth = await requireApiRole(["admin", "agronomist", "ops"]);
+    if (!auth.ok) {
+      return NextResponse.json({ message: auth.message }, { status: auth.status });
+    }
+    const user = auth.user;
     const { batchId } = await params;
 
     const body = await request.json();
@@ -45,7 +49,7 @@ export async function POST(
         status: validatedData.status,
         location: validatedData.location,
         notes: validatedData.notes,
-        performedBy: user.fullName,
+        performedBy: user.name,
         timestamp: new Date(),
       },
     });
@@ -55,7 +59,7 @@ export async function POST(
     console.error("Error creating milestone:", error);
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { message: "Invalid data", errors: error.errors },
+        { message: "Invalid data", errors: error.issues },
         { status: 400 }
       );
     }
