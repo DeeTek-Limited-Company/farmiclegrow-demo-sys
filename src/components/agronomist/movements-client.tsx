@@ -312,21 +312,21 @@ export function MovementsClient({
       </div>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-[920px] rounded-[2rem] p-0 border-0 shadow-2xl">
-          <div className="flex max-h-[85vh] flex-col">
-            <div className="p-6 pb-4">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black tracking-tight">{edit ? "Edit Movement" : "Create Movement"}</DialogTitle>
-                <DialogDescription className="text-sm font-medium text-muted-foreground">
-                  Record a logistics movement milestone for a batch.
-                </DialogDescription>
-              </DialogHeader>
-            </div>
+        <DialogContent className="sm:max-w-[920px] rounded-[2.5rem] p-0 border-0 shadow-2xl overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4 sm:p-8 sm:pb-6 bg-slate-50/50 border-b border-slate-100">
+              <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight">
+                {edit ? "Edit Movement" : "Create Movement"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+                Record a logistics movement milestone for a batch.
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-2">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Batch *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Batch *</Label>
                   <Select value={form.batchId} onValueChange={(v) => setForm((prev) => ({ ...prev, batchId: v }))} disabled={!!edit}>
                     <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
                       <SelectValue placeholder="Select a batch..." />
@@ -342,63 +342,70 @@ export function MovementsClient({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From *</Label>
-                  <Input value={form.fromLocation} onChange={(e) => setForm((p) => ({ ...p, fromLocation: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">From *</Label>
+                  <Input value={form.fromLocation} onChange={(e) => setForm((p) => ({ ...p, fromLocation: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">To *</Label>
-                  <Input value={form.toLocation} onChange={(e) => setForm((p) => ({ ...p, toLocation: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">To *</Label>
+                  <Input value={form.toLocation} onChange={(e) => setForm((p) => ({ ...p, toLocation: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Driver</Label>
-                  <Input value={form.driverName} onChange={(e) => setForm((p) => ({ ...p, driverName: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Driver</Label>
+                  <Input value={form.driverName} onChange={(e) => setForm((p) => ({ ...p, driverName: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle number</Label>
-                  <Input value={form.vehicleNumber} onChange={(e) => setForm((p) => ({ ...p, vehicleNumber: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Vehicle number</Label>
+                  <Input value={form.vehicleNumber} onChange={(e) => setForm((p) => ({ ...p, vehicleNumber: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dispatch date *</Label>
-                  <Input type="date" value={form.dispatchDate} onChange={(e) => setForm((p) => ({ ...p, dispatchDate: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Dispatch date *</Label>
+                  <Input type="date" value={form.dispatchDate} onChange={(e) => setForm((p) => ({ ...p, dispatchDate: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Arrival date</Label>
-                  <Input type="date" value={form.arrivalDate} onChange={(e) => setForm((p) => ({ ...p, arrivalDate: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Arrival date</Label>
+                  <Input type="date" value={form.arrivalDate} onChange={(e) => setForm((p) => ({ ...p, arrivalDate: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity sent</Label>
-                  <Input type="number" step="0.01" value={form.quantitySent} onChange={(e) => setForm((p) => ({ ...p, quantitySent: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Quantity sent</Label>
+                  <Input type="number" step="0.01" value={form.quantitySent} onChange={(e) => setForm((p) => ({ ...p, quantitySent: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity received</Label>
-                  <Input type="number" step="0.01" value={form.quantityReceived} onChange={(e) => setForm((p) => ({ ...p, quantityReceived: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Quantity received</Label>
+                  <Input type="number" step="0.01" value={form.quantityReceived} onChange={(e) => setForm((p) => ({ ...p, quantityReceived: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Condition on arrival</Label>
-                  <Input value={form.conditionOnArrival} onChange={(e) => setForm((p) => ({ ...p, conditionOnArrival: e.target.value }))} className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold" />
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Condition on arrival</Label>
+                  <Input value={form.conditionOnArrival} onChange={(e) => setForm((p) => ({ ...p, conditionOnArrival: e.target.value }))} className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold" />
                 </div>
               </div>
             </div>
 
-            <div className="p-6 pt-4">
-              <DialogFooter>
-                <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
-                  Cancel
-                </Button>
-                <Button onClick={() => void submit()} className="h-11 rounded-xl font-bold shadow-lg shadow-primary/20" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : edit ? (
-                    "Save changes"
-                  ) : (
-                    "Create movement"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            <DialogFooter className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={close} 
+                className="h-12 rounded-2xl font-black border-slate-200 w-full sm:w-auto order-2 sm:order-1" 
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                className="h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black shadow-xl shadow-primary/20 w-full sm:w-auto order-1 sm:order-2"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : edit ? (
+                  "Save Changes"
+                ) : (
+                  "Create Movement"
+                )}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

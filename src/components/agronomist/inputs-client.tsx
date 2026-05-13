@@ -428,23 +428,21 @@ export function InputsClient({
       </div>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-[920px] rounded-[2rem] p-0 border-0 shadow-2xl">
-          <div className="flex max-h-[85vh] flex-col">
-            <div className="p-6 pb-4">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black tracking-tight">
-                  {edit ? "Edit Input Record" : "Create Input Record"}
-                </DialogTitle>
-                <DialogDescription className="text-sm font-medium text-muted-foreground">
-                  Record input details for traceability (manufacturer, batch number, supplier, dates, usage).
-                </DialogDescription>
-              </DialogHeader>
-            </div>
+        <DialogContent className="sm:max-w-[920px] rounded-[2.5rem] p-0 border-0 shadow-2xl overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4 sm:p-8 sm:pb-6 bg-slate-50/50 border-b border-slate-100">
+              <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight">
+                {edit ? "Edit Input Record" : "Create Input Record"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+                Record input details for traceability (manufacturer, batch number, supplier, dates, usage).
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-2">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Farmer *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Farmer *</Label>
                   <Select
                     value={form.farmerId}
                     onValueChange={(v) => setForm((prev) => ({ ...prev, farmerId: v, plotId: "" }))}
@@ -464,16 +462,16 @@ export function InputsClient({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Plot *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Plot *</Label>
                   <Select
                     value={form.plotId}
                     onValueChange={(v) => setForm((prev) => ({ ...prev, plotId: v }))}
                     disabled={!!edit || !!context?.plotId}
                   >
-                    <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
                       <SelectValue placeholder={form.farmerId ? "Select a plot..." : "Select a farmer first"} />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
                       {plotsForFarmer.map((p) => (
                         <SelectItem key={p.id} value={p.id} className="rounded-xl font-medium">
                           {plotLabel(p)}
@@ -484,12 +482,12 @@ export function InputsClient({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Category *</Label>
                   <Select value={form.inputCategory} onValueChange={(v) => setForm((prev) => ({ ...prev, inputCategory: v }))}>
-                    <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
                       <SelectValue placeholder="Category" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
                       {INPUT_CATEGORIES.map((c) => (
                         <SelectItem key={c} value={c} className="rounded-xl font-medium">
                           {c}
@@ -500,84 +498,84 @@ export function InputsClient({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product name *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Product name *</Label>
                   <Input
                     value={form.productName}
                     onChange={(e) => setForm((prev) => ({ ...prev, productName: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="e.g., NPK 15-15-15"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Manufacturer</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Manufacturer</Label>
                   <Input
                     value={form.manufacturer}
                     onChange={(e) => setForm((prev) => ({ ...prev, manufacturer: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="Optional"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Batch number</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Batch number</Label>
                   <Input
                     value={form.batchNumber}
                     onChange={(e) => setForm((prev) => ({ ...prev, batchNumber: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="Optional"
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Supplier</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Supplier</Label>
                   <Input
                     value={form.supplier}
                     onChange={(e) => setForm((prev) => ({ ...prev, supplier: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="Optional"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Purchase date</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Purchase date</Label>
                   <Input
                     type="date"
                     value={form.purchaseDate}
                     onChange={(e) => setForm((prev) => ({ ...prev, purchaseDate: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Expiry date</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Expiry date</Label>
                   <Input
                     type="date"
                     value={form.expiryDate}
                     onChange={(e) => setForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity used</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Quantity used</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.quantityUsed}
                     onChange={(e) => setForm((prev) => ({ ...prev, quantityUsed: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="0.00"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unit</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Unit</Label>
                   <Select value={form.quantityUnit} onValueChange={(v) => setForm((prev) => ({ ...prev, quantityUnit: v }))}>
-                    <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
                       <SelectValue placeholder="Unit" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
                       {QUANTITY_UNITS.map((u) => (
                         <SelectItem key={u} value={u} className="rounded-xl font-medium">
                           {u}
@@ -588,40 +586,43 @@ export function InputsClient({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Application date</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Application date</Label>
                   <Input
                     type="date"
                     value={form.applicationDate}
                     onChange={(e) => setForm((prev) => ({ ...prev, applicationDate: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="p-6 pt-4">
-              <DialogFooter>
-                <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => void submit()}
-                  className="h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20"
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : edit ? (
-                    "Save changes"
-                  ) : (
-                    "Create record"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            <DialogFooter className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={close} 
+                className="h-12 rounded-2xl font-black border-slate-200 w-full sm:w-auto order-2 sm:order-1" 
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                className="h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black shadow-xl shadow-primary/20 w-full sm:w-auto order-1 sm:order-2"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : edit ? (
+                  "Save Changes"
+                ) : (
+                  "Create Record"
+                )}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

@@ -362,214 +362,223 @@ export function FarmPlotsClient({
       </div>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-[760px] rounded-[2rem] p-6 border-0 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-black tracking-tight">
-              {edit ? "Edit Plot" : "Register Farm Plot"}
-            </DialogTitle>
-            <DialogDescription className="text-sm font-medium text-muted-foreground">
-              Capture plot-level data that will power planting, harvest, quality testing, and movement logs.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-[760px] rounded-[2.5rem] p-0 border-0 shadow-2xl overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4 sm:p-8 sm:pb-6 bg-slate-50/50 border-b border-slate-100">
+              <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight">
+                {edit ? "Edit Plot" : "Register Farm Plot"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+                Capture plot-level data that will power planting, harvest, quality testing, and movement logs.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-2 md:col-span-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Farmer *
-              </Label>
-              <Select
-                value={form.farmerId}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, farmerId: v }))}
-                disabled={!!edit}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Farmer *
+                  </Label>
+                  <Select
+                    value={form.farmerId}
+                    onValueChange={(v) => setForm((prev) => ({ ...prev, farmerId: v }))}
+                    disabled={!!edit}
+                  >
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Select a farmer..." />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      {farmerOptions.map((f) => (
+                        <SelectItem key={f.id} value={f.id} className="rounded-xl font-medium">
+                          {f.fullName} {f.phone ? `(${f.phone})` : ""} · {formatLocation(f)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Plot name
+                  </Label>
+                  <Input
+                    value={form.plotName}
+                    onChange={(e) => setForm((prev) => ({ ...prev, plotName: e.target.value }))}
+                    placeholder="e.g., North field"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Plot size (hectares)
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.plotSizeHectare}
+                    onChange={(e) => setForm((prev) => ({ ...prev, plotSizeHectare: e.target.value }))}
+                    placeholder="0.00"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Soil type
+                  </Label>
+                  <Select value={form.soilType} onValueChange={(v) => setForm((prev) => ({ ...prev, soilType: v }))}>
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Soil type" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      {SOIL_TYPES.map((t) => (
+                        <SelectItem key={t} value={t} className="rounded-xl font-medium">
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Irrigation source
+                  </Label>
+                  <Select
+                    value={form.irrigationSource}
+                    onValueChange={(v) => setForm((prev) => ({ ...prev, irrigationSource: v }))}
+                  >
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Irrigation" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      {IRRIGATION_SOURCES.map((t) => (
+                        <SelectItem key={t} value={t} className="rounded-xl font-medium">
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Previous crop
+                  </Label>
+                  <Input
+                    value={form.previousCrop}
+                    onChange={(e) => setForm((prev) => ({ ...prev, previousCrop: e.target.value }))}
+                    placeholder="e.g., maize"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Current crop
+                  </Label>
+                  <Input
+                    value={form.currentCrop}
+                    onChange={(e) => setForm((prev) => ({ ...prev, currentCrop: e.target.value }))}
+                    placeholder="e.g., rice"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Planting season
+                  </Label>
+                  <Input
+                    value={form.plantingSeason}
+                    onChange={(e) => setForm((prev) => ({ ...prev, plantingSeason: e.target.value }))}
+                    placeholder="e.g., 2026 Main"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Ownership type
+                  </Label>
+                  <Select value={form.ownershipType} onValueChange={(v) => setForm((prev) => ({ ...prev, ownershipType: v }))}>
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Ownership" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      {OWNERSHIP_TYPES.map((t) => (
+                        <SelectItem key={t} value={t} className="rounded-xl font-medium">
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Environmental risk level
+                  </Label>
+                  <Select
+                    value={form.environmentalRiskLevel}
+                    onValueChange={(v) => setForm((prev) => ({ ...prev, environmentalRiskLevel: v }))}
+                  >
+                    <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Risk level" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      {RISK_LEVELS.map((t) => (
+                        <SelectItem key={t} value={t} className="rounded-xl font-medium">
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                    Land document available
+                  </Label>
+                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <Checkbox
+                      checked={form.landDocumentAvailable}
+                      onCheckedChange={(v) => setForm((prev) => ({ ...prev, landDocumentAvailable: v === true }))}
+                    />
+                    <span className="text-sm font-bold text-slate-800">Yes</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={close} 
+                className="h-12 rounded-2xl font-black border-slate-200 w-full sm:w-auto order-2 sm:order-1" 
+                disabled={saving}
               >
-                <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-                  <SelectValue placeholder="Select a farmer..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {farmerOptions.map((f) => (
-                    <SelectItem key={f.id} value={f.id} className="rounded-xl font-medium">
-                      {f.fullName} {f.phone ? `(${f.phone})` : ""} · {formatLocation(f)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Plot name
-              </Label>
-              <Input
-                value={form.plotName}
-                onChange={(e) => setForm((prev) => ({ ...prev, plotName: e.target.value }))}
-                placeholder="e.g., North field"
-                className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Plot size (hectares)
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.plotSizeHectare}
-                onChange={(e) => setForm((prev) => ({ ...prev, plotSizeHectare: e.target.value }))}
-                placeholder="0.00"
-                className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Soil type
-              </Label>
-              <Select value={form.soilType} onValueChange={(v) => setForm((prev) => ({ ...prev, soilType: v }))}>
-                <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-                  <SelectValue placeholder="Soil type" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {SOIL_TYPES.map((t) => (
-                    <SelectItem key={t} value={t} className="rounded-xl font-medium">
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Irrigation source
-              </Label>
-              <Select
-                value={form.irrigationSource}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, irrigationSource: v }))}
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                className="h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black shadow-xl shadow-primary/20 w-full sm:w-auto order-1 sm:order-2"
+                disabled={saving}
               >
-                <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-                  <SelectValue placeholder="Irrigation" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {IRRIGATION_SOURCES.map((t) => (
-                    <SelectItem key={t} value={t} className="rounded-xl font-medium">
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Previous crop
-              </Label>
-              <Input
-                value={form.previousCrop}
-                onChange={(e) => setForm((prev) => ({ ...prev, previousCrop: e.target.value }))}
-                placeholder="e.g., maize"
-                className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Current crop
-              </Label>
-              <Input
-                value={form.currentCrop}
-                onChange={(e) => setForm((prev) => ({ ...prev, currentCrop: e.target.value }))}
-                placeholder="e.g., rice"
-                className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Planting season
-              </Label>
-              <Input
-                value={form.plantingSeason}
-                onChange={(e) => setForm((prev) => ({ ...prev, plantingSeason: e.target.value }))}
-                placeholder="e.g., 2026 Main"
-                className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Ownership type
-              </Label>
-              <Select value={form.ownershipType} onValueChange={(v) => setForm((prev) => ({ ...prev, ownershipType: v }))}>
-                <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-                  <SelectValue placeholder="Ownership" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {OWNERSHIP_TYPES.map((t) => (
-                    <SelectItem key={t} value={t} className="rounded-xl font-medium">
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Environmental risk level
-              </Label>
-              <Select
-                value={form.environmentalRiskLevel}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, environmentalRiskLevel: v }))}
-              >
-                <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-                  <SelectValue placeholder="Risk level" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-200 shadow-xl">
-                  {RISK_LEVELS.map((t) => (
-                    <SelectItem key={t} value={t} className="rounded-xl font-medium">
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Land document available
-              </Label>
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <Checkbox
-                  checked={form.landDocumentAvailable}
-                  onCheckedChange={(v) => setForm((prev) => ({ ...prev, landDocumentAvailable: v === true }))}
-                />
-                <span className="text-sm font-bold text-slate-800">Yes</span>
-              </label>
-            </div>
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : edit ? (
+                  "Save Changes"
+                ) : (
+                  "Create Plot"
+                )}
+              </Button>
+            </DialogFooter>
           </div>
-
-          <DialogFooter className="pt-4">
-            <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void submit()}
-              className="h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20"
-              disabled={saving}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : edit ? (
-                "Save changes"
-              ) : (
-                "Create plot"
-              )}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

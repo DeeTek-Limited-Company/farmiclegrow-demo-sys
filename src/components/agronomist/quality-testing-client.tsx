@@ -325,23 +325,21 @@ export function QualityTestingClient({
       </div>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-[980px] rounded-[2rem] p-0 border-0 shadow-2xl">
-          <div className="flex max-h-[85vh] flex-col">
-            <div className="p-6 pb-4">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black tracking-tight">
-                  {edit ? "Edit Quality Test" : "Create Quality Test"}
-                </DialogTitle>
-                <DialogDescription className="text-sm font-medium text-muted-foreground">
-                  Attach a quality test to a specific harvest record.
-                </DialogDescription>
-              </DialogHeader>
-            </div>
+        <DialogContent className="sm:max-w-[980px] rounded-[2.5rem] p-0 border-0 shadow-2xl overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4 sm:p-8 sm:pb-6 bg-slate-50/50 border-b border-slate-100">
+              <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight">
+                {edit ? "Edit Quality Test" : "Create Quality Test"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+                Attach a quality test to a specific harvest record.
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-2">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Harvest *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Harvest *</Label>
                   <Select value={form.harvestId} onValueChange={(v) => setForm((prev) => ({ ...prev, harvestId: v }))} disabled={!!edit}>
                     <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
                       <SelectValue placeholder="Select a harvest record..." />
@@ -357,124 +355,131 @@ export function QualityTestingClient({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date tested *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Date tested *</Label>
                   <Input
                     type="date"
                     value={form.dateTested}
                     onChange={(e) => setForm((prev) => ({ ...prev, dateTested: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Passed</Label>
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 h-11">
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Passed</Label>
+                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 h-12">
                     <Checkbox checked={form.passed} onCheckedChange={(v) => setForm((prev) => ({ ...prev, passed: v === true }))} />
                     <span className="text-sm font-bold text-slate-800">{form.passed ? "Passed" : "Failed"}</span>
                   </label>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Moisture (%)</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Moisture (%)</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.moisturePct}
                     onChange={(e) => setForm((prev) => ({ ...prev, moisturePct: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Foreign matter (%)</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Foreign matter (%)</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.foreignMatterPct}
                     onChange={(e) => setForm((prev) => ({ ...prev, foreignMatterPct: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Broken grain (%)</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Broken grain (%)</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.brokenGrainPct}
                     onChange={(e) => setForm((prev) => ({ ...prev, brokenGrainPct: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Color grade</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Color grade</Label>
                   <Input
                     value={form.colorGrade}
                     onChange={(e) => setForm((prev) => ({ ...prev, colorGrade: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pest damage</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Pest damage</Label>
                   <Input
                     value={form.pestDamage}
                     onChange={(e) => setForm((prev) => ({ ...prev, pestDamage: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Aflatoxin test</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Aflatoxin test</Label>
                   <Input
                     value={form.aflatoxinTest}
                     onChange={(e) => setForm((prev) => ({ ...prev, aflatoxinTest: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                     placeholder="e.g., Negative / 12 ppb"
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tested by</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Tested by</Label>
                   <Input
                     value={form.testedBy}
                     onChange={(e) => setForm((prev) => ({ ...prev, testedBy: e.target.value }))}
-                    className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notes</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Notes</Label>
                   <Textarea
                     value={form.notes}
                     onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
                     rows={3}
-                    className="rounded-xl bg-slate-50 border-slate-200 font-bold p-3"
+                    className="rounded-2xl bg-slate-50 border-slate-200 font-bold p-4 focus:ring-primary/20"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="p-6 pt-4">
-              <DialogFooter>
-                <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
-                  Cancel
-                </Button>
-                <Button onClick={() => void submit()} className="h-11 rounded-xl font-bold shadow-lg shadow-primary/20" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : edit ? (
-                    "Save changes"
-                  ) : (
-                    "Create test"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            <DialogFooter className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={close} 
+                className="h-12 rounded-2xl font-black border-slate-200 w-full sm:w-auto order-2 sm:order-1" 
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                className="h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black shadow-xl shadow-primary/20 w-full sm:w-auto order-1 sm:order-2"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : edit ? (
+                  "Save Changes"
+                ) : (
+                  "Create Test"
+                )}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

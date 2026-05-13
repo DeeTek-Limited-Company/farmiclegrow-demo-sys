@@ -675,23 +675,21 @@ export function FieldActivitiesClient({
       </div>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-[920px] rounded-[2rem] p-0 border-0 shadow-2xl">
-          <div className="flex max-h-[85vh] flex-col">
-            <div className="p-6 pb-4">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black tracking-tight">
-                  {edit ? "Edit Field Activity" : "Create Field Activity"}
-                </DialogTitle>
-                <DialogDescription className="text-sm font-medium text-muted-foreground">
-                  Log a field visit activity. Link to a production cycle if this activity belongs to a specific season.
-                </DialogDescription>
-              </DialogHeader>
-            </div>
+        <DialogContent className="sm:max-w-[920px] rounded-[2.5rem] p-0 border-0 shadow-2xl overflow-hidden">
+          <div className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4 sm:p-8 sm:pb-6 bg-slate-50/50 border-b border-slate-100">
+              <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight">
+                {edit ? "Edit Field Activity" : "Create Field Activity"}
+              </DialogTitle>
+              <DialogDescription className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+                Log a field visit activity. Link to a production cycle if this activity belongs to a specific season.
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-2">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Farmer *</Label>
+                  <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Farmer *</Label>
                   <Select
                     value={form.farmerId}
                     onValueChange={(v) => setForm((prev) => ({ ...prev, farmerId: v, plotId: "", productionRecordId: "" }))}
@@ -953,29 +951,32 @@ export function FieldActivitiesClient({
               </div>
             </div>
 
-            <div className="p-6 pt-4">
-              <DialogFooter>
-                <Button variant="outline" onClick={close} className="h-11 rounded-xl font-bold border-slate-200" disabled={saving}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => void submit()}
-                  className="h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20"
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : edit ? (
-                    "Save changes"
-                  ) : (
-                    "Create activity"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            <DialogFooter className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={close} 
+                className="h-12 rounded-2xl font-black border-slate-200 w-full sm:w-auto order-2 sm:order-1" 
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                className="h-12 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black shadow-xl shadow-primary/20 w-full sm:w-auto order-1 sm:order-2"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : edit ? (
+                  "Save Changes"
+                ) : (
+                  "Create Activity"
+                )}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

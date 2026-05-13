@@ -396,21 +396,18 @@ export function AgronomistProductionView({
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
-              {filtered.map((record) => {
-                const config = getStatusConfig(record.status);
-                return (
                   <div
                     key={record.id}
                     className={`p-6 hover:bg-slate-50/30 transition-all group ${selectedRecordId === record.id ? "bg-slate-50/40" : ""}`}
                   >
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                      <div className="flex items-center gap-5">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 flex items-center justify-center text-emerald-600 font-black text-2xl shadow-sm border border-emerald-100/50">
+                      <div className="flex items-center gap-4 sm:gap-5">
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 flex items-center justify-center text-emerald-600 font-black text-xl sm:text-2xl shadow-sm border border-emerald-100/50 shrink-0">
                           {record.cropType.charAt(0)}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-3 mb-1 flex-wrap">
-                            <h3 className="font-bold text-slate-800 text-xl">{record.cropType}</h3>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
+                            <h3 className="font-bold text-slate-800 text-lg sm:text-xl truncate">{record.cropType}</h3>
                             {record.cropVariety ? (
                               <Badge
                                 variant="outline"
@@ -426,98 +423,94 @@ export function AgronomistProductionView({
                               {config.icon}
                               {config.label.toUpperCase()}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className="rounded-lg font-black text-[10px] bg-white border-slate-200 text-slate-500"
-                            >
-                              {record.season}
-                            </Badge>
                           </div>
-                          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 font-medium">
-                            <span className="flex items-center gap-1.5">
-                              <Leaf className="w-4 h-4 text-emerald-500" />
+                          <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 sm:gap-y-2 text-[10px] sm:text-sm text-slate-500 font-medium">
+                            <span className="flex items-center gap-1.5 truncate">
+                              <Leaf className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
                               {record.farmer.fullName}
                             </span>
                             {record.farmProfile && (
-                              <span className="flex items-center gap-1.5">
-                                <Sprout className="w-4 h-4 text-amber-500" />
+                              <span className="flex items-center gap-1.5 truncate">
+                                <Sprout className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
                                 {record.farmProfile.farmName}
                               </span>
                             )}
-                            <span className="flex items-center gap-1.5">
-                              <Calendar className="w-4 h-4 text-blue-500" />
-                              Started {format(new Date(record.createdAt), "MMM d")}
+                            <span className="flex items-center gap-1.5 whitespace-nowrap">
+                              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
+                              {format(new Date(record.createdAt), "MMM d")}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-8 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                        <div className="text-right">
-                          <p className="text-sm font-black text-slate-400 uppercase tracking-widest text-[10px]">
-                            Expected
+                      <div className="grid grid-cols-3 lg:flex lg:items-center gap-3 sm:gap-4 lg:gap-8 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                        <div className="text-center sm:text-left lg:text-right">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                            Exp
                           </p>
-                          <p className="text-lg font-black text-slate-600">
+                          <p className="text-sm sm:text-lg font-black text-slate-600">
                             {record.expectedYieldTon ? `${record.expectedYieldTon}T` : "—"}
                           </p>
                         </div>
-                        <div className="w-px h-8 bg-slate-200" />
-                        <div className="text-right">
-                          <p className="text-sm font-black text-amber-500 uppercase tracking-widest text-[10px]">
-                            Harvested
+                        <div className="hidden lg:block w-px h-8 bg-slate-200" />
+                        <div className="text-center sm:text-left lg:text-right">
+                          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">
+                            Harv
                           </p>
-                          <p className="text-lg font-black text-slate-900">
+                          <p className="text-sm sm:text-lg font-black text-slate-900">
                             {record.quantityTon ? `${record.quantityTon}T` : "—"}
                           </p>
                         </div>
-                        <div className="w-px h-8 bg-slate-200" />
-                        <div className="text-right">
-                          <p className="text-sm font-black text-emerald-500 uppercase tracking-widest text-[10px]">
-                            Usable yield
+                        <div className="hidden lg:block w-px h-8 bg-slate-200" />
+                        <div className="text-center sm:text-left lg:text-right">
+                          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest leading-none mb-1">
+                            Use
                           </p>
-                          <p className="text-lg font-black text-slate-900">
+                          <p className="text-sm sm:text-lg font-black text-slate-900">
                             {record.actualYieldTon ? `${record.actualYieldTon}T` : "—"}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="text-right hidden xl:block mr-2 space-y-1">
-                          <div>
+                      <div className="flex items-center justify-between sm:justify-end gap-3 w-full lg:w-auto">
+                        <div className="text-left sm:text-right hidden sm:block xl:block mr-2 space-y-0.5">
+                          <div className="flex sm:flex-col lg:flex-row xl:flex-col gap-1 sm:gap-0 lg:gap-2 xl:gap-0">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Planting</p>
-                            <p className="text-sm font-bold text-slate-700">
-                              {record.plantingDate ? format(new Date(record.plantingDate), "MMM d, yyyy") : "Not set"}
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-700">
+                              {record.plantingDate ? format(new Date(record.plantingDate), "MMM d, yy") : "Not set"}
                             </p>
                           </div>
-                          <div>
+                          <div className="flex sm:flex-col lg:flex-row xl:flex-col gap-1 sm:gap-0 lg:gap-2 xl:gap-0">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              Expected harvest
+                              Harvest
                             </p>
-                            <p className="text-sm font-bold text-slate-700">
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-700">
                               {record.expectedHarvestDate
-                                ? format(new Date(record.expectedHarvestDate), "MMM d, yyyy")
+                                ? format(new Date(record.expectedHarvestDate), "MMM d, yy")
                                 : "Not set"}
                             </p>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          variant={selectedRecordId === record.id ? "default" : "outline"}
-                          className="h-12 rounded-2xl font-bold shadow-sm"
-                          onClick={() => setSelectedRecordId((prev) => (prev === record.id ? null : record.id))}
-                        >
-                          {selectedRecordId === record.id ? "Close" : "Open"}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-500 group-hover:bg-primary group-hover:text-white transition-all shrink-0"
-                          onClick={() => openEdit(record)}
-                          aria-label={`Update cycle for ${record.cropType}`}
-                        >
-                          <Pencil className="w-5 h-5" />
-                        </Button>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <Button
+                            type="button"
+                            variant={selectedRecordId === record.id ? "default" : "outline"}
+                            className="h-11 sm:h-12 flex-1 sm:flex-none rounded-2xl font-bold shadow-sm"
+                            onClick={() => setSelectedRecordId((prev) => (prev === record.id ? null : record.id))}
+                          >
+                            {selectedRecordId === record.id ? "Close" : "Open"}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-slate-50 text-slate-500 group-hover:bg-primary group-hover:text-white transition-all shrink-0"
+                            onClick={() => openEdit(record)}
+                            aria-label={`Update cycle for ${record.cropType}`}
+                          >
+                            <Pencil className="w-5 h-5" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
 
@@ -566,8 +559,8 @@ export function AgronomistProductionView({
         <Card className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xl font-black tracking-tight">
+              <div className="min-w-0">
+                <CardTitle className="text-xl font-black tracking-tight truncate md:whitespace-normal">
                   Cycle workspace · {selectedRecord.farmer.fullName} · {selectedRecord.cropType} · {selectedRecord.season}
                 </CardTitle>
                 <CardDescription className="font-medium">
@@ -588,17 +581,19 @@ export function AgronomistProductionView({
             </div>
           </CardHeader>
           <CardContent className="p-8">
-            <Tabs defaultValue="planned">
-              <TabsList className="grid grid-cols-4 w-full rounded-2xl">
-                <TabsTrigger value="planned">Planned</TabsTrigger>
-                <TabsTrigger value="active" disabled={selectedRecord.status === "PLANNED"}>
-                  Active growth
-                </TabsTrigger>
-                <TabsTrigger value="harvest" disabled={selectedRecord.status === "PLANNED" || selectedRecord.status === "ACTIVE"}>
-                  Harvest
-                </TabsTrigger>
-                <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              </TabsList>
+            <Tabs defaultValue="planned" className="w-full">
+              <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+                <TabsList className="flex sm:grid sm:grid-cols-4 w-max sm:w-full rounded-2xl min-w-full">
+                  <TabsTrigger value="planned" className="px-6 sm:px-0">Planned</TabsTrigger>
+                  <TabsTrigger value="active" disabled={selectedRecord.status === "PLANNED"} className="px-6 sm:px-0">
+                    Active growth
+                  </TabsTrigger>
+                  <TabsTrigger value="harvest" disabled={selectedRecord.status === "PLANNED" || selectedRecord.status === "ACTIVE"} className="px-6 sm:px-0">
+                    Harvest
+                  </TabsTrigger>
+                  <TabsTrigger value="timeline" className="px-6 sm:px-0">Timeline</TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="planned" className="mt-6 space-y-8">
                 <div className="rounded-2xl border border-slate-200 bg-white p-6">
