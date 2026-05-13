@@ -570,6 +570,7 @@ enum ListingStatus {
   ACTIVE
   SOLD_OUT
   ARCHIVED
+  INACTIVE
 }
 
 model MarketplaceListing {

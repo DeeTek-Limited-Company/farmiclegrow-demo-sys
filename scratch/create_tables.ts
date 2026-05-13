@@ -73,6 +73,10 @@ async function main() {
     FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   `);
 
+  await safeExecute('Update ListingStatus Enum', `
+    ALTER TYPE "ListingStatus" ADD VALUE IF NOT EXISTS 'INACTIVE';
+  `);
+
   await prisma.$disconnect();
 }
 
