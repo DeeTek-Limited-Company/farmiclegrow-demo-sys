@@ -1281,7 +1281,8 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
               </AnimatePresence>
             </div>
 
-            {/* Footer Navigatio            <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+            {/* Footer Navigation */}
+            <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
               <Button 
                 type="button" 
                 variant="ghost" 
@@ -1310,7 +1311,6 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                 </Button>
               )}
             </div>
-/div>
           </form>
         </CardContent>
       </Card>
