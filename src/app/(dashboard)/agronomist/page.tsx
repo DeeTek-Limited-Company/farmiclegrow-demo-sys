@@ -318,25 +318,25 @@ export default async function AgronomistPage() {
             {recentSubmissions.length > 0 ? (
               <div className="divide-y divide-slate-50">
                 {recentSubmissions.map((sub) => (
-                  <div key={sub.id} className="p-6 hover:bg-slate-50/30 transition-colors flex items-center justify-between group">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm ${
+                  <div key={sub.id} className="p-6 hover:bg-slate-50/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm shrink-0 ${
                         sub.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 
                         sub.status === 'REJECTED' ? 'bg-red-50 text-red-600' : 
                         'bg-amber-50 text-amber-600'
                       }`}>
                         {sub.farmer.fullName.charAt(0)}
                       </div>
-                      <div>
-                        <h4 className="font-bold text-slate-800 group-hover:text-primary transition-colors">{sub.farmer.fullName}</h4>
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-800 group-hover:text-primary transition-colors truncate">{sub.farmer.fullName}</h4>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-0.5 truncate">
                           Submitted {format(new Date(sub.submittedAt), "MMM d, yyyy")}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between sm:justify-end gap-3">
                       <StatusBadge status={sub.status} />
-                      <Button variant="ghost" size="icon" className="rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" asChild>
+                      <Button variant="ghost" size="icon" className="rounded-xl sm:opacity-0 group-hover:opacity-100 transition-opacity" asChild>
                         <Link href={`/agronomist/farmers/${sub.farmerId}`}>
                           <ArrowUpRight className="w-5 h-5 text-slate-400" />
                         </Link>
@@ -371,14 +371,14 @@ export default async function AgronomistPage() {
                     href={`/agronomist/farmers/${row.id}`}
                     className="block p-4 rounded-2xl bg-white border border-red-100 shadow-sm hover:shadow-md transition-all group"
                   >
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-row items-start justify-between mb-2 gap-2">
                       <div className="min-w-0">
                         <div className="font-bold text-slate-800 text-sm truncate">{row.name}</div>
                         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1 truncate">
                           {row.locationLabel}
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-red-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      <ArrowRight className="w-4 h-4 text-red-400 shrink-0 mt-1 sm:opacity-0 group-hover:opacity-100 transition-all" />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {row.missing.map((m) => (
@@ -492,9 +492,9 @@ function ActionCard({ title, value, icon, tone, description, href }: any) {
 
   return (
     <Card className={`border shadow-xl shadow-slate-200/30 rounded-[2rem] overflow-hidden ${toneClass[tone] ?? toneClass.slate}`}>
-      <CardContent className="p-6 flex items-center justify-between gap-4">
+      <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-white/70 border border-white/60 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-white/70 border border-white/60 flex items-center justify-center shrink-0">
             {icon}
           </div>
           <div className="min-w-0">
@@ -503,7 +503,7 @@ function ActionCard({ title, value, icon, tone, description, href }: any) {
             <div className="text-[11px] text-slate-500 font-medium truncate">{description}</div>
           </div>
         </div>
-        <Button asChild variant="outline" className="rounded-2xl font-black">
+        <Button asChild variant="outline" className="rounded-2xl font-black w-full sm:w-auto shrink-0">
           <Link href={href}>
             Open <ArrowUpRight className="w-4 h-4 ml-2" />
           </Link>

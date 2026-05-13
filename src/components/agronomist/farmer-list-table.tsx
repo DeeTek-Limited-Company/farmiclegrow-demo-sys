@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
 import { useState } from 'react';
 
 interface FarmerListTableProps {
@@ -45,47 +46,86 @@ export function FarmerListTable({ farmers }: FarmerListTableProps) {
 
   return (
     <>
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Desktop Table View */}
+      <div className="hidden lg:block overflow-x-auto rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/20 bg-white">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead>Name</TableHead>
-              <TableHead>Crop Type</TableHead>
-              <TableHead className="text-right">Farm Size</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-center">Actions</TableHead>
+            <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+              <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400 py-6 pl-8">Name</TableHead>
+              <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Crop Type</TableHead>
+              <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400 text-right">Farm Size</TableHead>
+              <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Status</TableHead>
+              <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400 text-center pr-8">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {farmers.map((farmer) => (
               <TableRow
                 key={farmer.id}
-                className="hover:bg-muted/50 transition-colors"
+                className="hover:bg-slate-50/30 transition-colors border-slate-50"
               >
-                <TableCell className="font-medium">
+                <TableCell className="font-bold text-slate-800 py-6 pl-8">
                   {farmer.fullName}
                 </TableCell>
-                <TableCell>{farmer.cropType}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="font-medium text-slate-600">{farmer.cropType}</TableCell>
+                <TableCell className="text-right font-bold text-slate-700">
                   {farmer.farmSize} ha
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={farmer.status} />
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-center pr-8">
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="rounded-xl font-bold text-primary hover:bg-primary/5"
                     onClick={() => setSelectedFarmer(farmer)}
                   >
-                    <Eye className="w-4 h-4 mr-1" />
-                    View
+                    <Eye className="w-4 h-4 mr-2" />
+                    View Details
                   </Button>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4">
+        {farmers.map((farmer) => (
+          <Card key={farmer.id} className="border-0 shadow-lg shadow-slate-200/50 rounded-3xl overflow-hidden hover:scale-[1.01] transition-transform">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/5 flex items-center justify-center text-primary font-black text-lg">
+                    {farmer.fullName.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800">{farmer.fullName}</h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{farmer.cropType}</p>
+                  </div>
+                </div>
+                <StatusBadge status={farmer.status} />
+              </div>
+              
+              <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                <div className="text-sm font-bold text-slate-500">
+                  {farmer.farmSize} Hectares
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl font-bold border-slate-200"
+                  onClick={() => setSelectedFarmer(farmer)}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Farmer Details Dialog */}

@@ -235,16 +235,16 @@ export function ProductionRecordForm({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] rounded-[2.5rem] p-0 overflow-hidden border-0 shadow-2xl">
-        <div className="bg-gradient-to-br from-emerald-600 to-green-700 p-8 text-white relative">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
-              <Sprout className="w-8 h-8 text-white" />
+        <div className="bg-gradient-to-br from-emerald-600 to-green-700 p-6 sm:p-8 text-white relative">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
+              <Sprout className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
             <div>
-              <DialogTitle className="text-3xl font-black tracking-tight">
+              <DialogTitle className="text-xl sm:text-3xl font-black tracking-tight">
                 {editRecord ? "Update Lifecycle" : "Start Farming Cycle"}
               </DialogTitle>
-              <p className="text-emerald-50 font-medium opacity-90 mt-1">
+              <p className="text-[10px] sm:text-sm text-emerald-50 font-medium opacity-90 mt-0.5 sm:mt-1">
                 {editRecord ? "Updating record for the current season" : "Create a new production record at planting"}
               </p>
             </div>
@@ -258,7 +258,7 @@ export function ProductionRecordForm({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[70vh] overflow-y-auto bg-white">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-6 sm:space-y-8 max-h-[75vh] sm:max-h-[70vh] overflow-y-auto bg-white">
           {/* Section: Core Info */}
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-2">
@@ -596,19 +596,19 @@ export function ProductionRecordForm({
             </div>
           </div>
 
-          <DialogFooter className="pt-8 border-t border-slate-100 sticky bottom-0 bg-white">
+          <DialogFooter className="p-4 sm:pt-8 border-t border-slate-100 sticky bottom-0 bg-white flex flex-col sm:flex-row gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="rounded-2xl font-black h-14 px-10 border-slate-200 hover:bg-slate-50 text-slate-500"
+              className="rounded-2xl font-black h-12 sm:h-14 px-6 sm:px-10 border-slate-200 hover:bg-slate-50 text-slate-500 w-full sm:w-auto order-2 sm:order-1"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
-              className="rounded-2xl font-black h-14 px-10 bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all border-0"
+              className="rounded-2xl font-black h-12 sm:h-14 px-6 sm:px-10 bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all border-0 w-full sm:w-auto order-1 sm:order-2"
             >
               {isLoading ? (
                 <>

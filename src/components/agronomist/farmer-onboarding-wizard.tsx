@@ -506,22 +506,23 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
     <div className="max-w-4xl mx-auto w-full px-4 py-8 pt-16 lg:pt-24">
       {/* Stepper Header - Repositioned and with extra top margin to avoid address bar */}
       <div className="mb-10">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 px-2">
           {steps.map((step, index) => (
-            <div key={step.id} className="flex flex-col items-center relative z-10">
+            <div key={step.id} className="flex flex-col items-center relative z-10 flex-1">
               <div 
                 className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                  "w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-300",
                   index <= currentStep 
                     ? "bg-primary text-white shadow-lg ring-4 ring-primary/20" 
                     : "bg-muted text-muted-foreground"
                 )}
               >
-                <step.icon className="w-5 h-5" />
+                <step.icon className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <span className={cn(
-                "text-[10px] uppercase font-bold mt-2 hidden md:block",
-                index <= currentStep ? "text-primary" : "text-muted-foreground"
+                "text-[8px] sm:text-[10px] uppercase font-black mt-2 text-center line-clamp-1 max-w-[60px] sm:max-w-none",
+                index <= currentStep ? "text-primary" : "text-muted-foreground",
+                index !== currentStep && "hidden md:block"
               )}>
                 {step.title}
               </span>
@@ -1222,9 +1223,20 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                             <Button variant="ghost" size="sm" type="button" onClick={() => setCurrentStep(0)} className="text-[10px] uppercase font-bold text-primary">Edit</Button>
                           </div>
                           <div className="space-y-2 text-sm">
-                            <div className="flex justify-between text-slate-500"><span>Name:</span> <span className="font-medium text-slate-800">{watch("personal.fullName")}</span></div>
-                            <div className="flex justify-between text-slate-500"><span>Phone:</span> <span className="font-medium text-slate-800">{watch("personal.phone")}</span></div>
-                            {watch("personal.email") && <div className="flex justify-between text-slate-500"><span>Email:</span> <span className="font-medium text-slate-800">{watch("personal.email")}</span></div>}
+                            <div className="flex flex-col sm:flex-row sm:justify-between text-slate-500 gap-0.5 sm:gap-4">
+                              <span>Name:</span> 
+                              <span className="font-bold text-slate-800 break-words">{watch("personal.fullName")}</span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:justify-between text-slate-500 gap-0.5 sm:gap-4">
+                              <span>Phone:</span> 
+                              <span className="font-bold text-slate-800">{watch("personal.phone")}</span>
+                            </div>
+                            {watch("personal.email") && (
+                              <div className="flex flex-col sm:flex-row sm:justify-between text-slate-500 gap-0.5 sm:gap-4">
+                                <span>Email:</span> 
+                                <span className="font-bold text-slate-800 truncate max-w-[200px]">{watch("personal.email")}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1269,23 +1281,22 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
               </AnimatePresence>
             </div>
 
-            {/* Footer Navigation */}
-            <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex justify-between items-center">
+            {/* Footer Navigatio            <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
               <Button 
                 type="button" 
                 variant="ghost" 
                 onClick={prevStep}
                 disabled={currentStep === 0 || isSubmitting}
-                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider", currentStep === 0 && "opacity-0")}
+                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider w-full sm:w-auto order-2 sm:order-1", currentStep === 0 && "opacity-0")}
               >
                 <ChevronLeft className="w-4 h-4 mr-2" /> Back
               </Button>
-
+ 
               {currentStep === steps.length - 1 ? (
                 <Button 
                   type="submit" 
                   disabled={isSubmitting}
-                  className="bg-green-600 hover:bg-green-700 text-white px-10 rounded-xl font-bold shadow-lg shadow-green-200"
+                  className="bg-green-600 hover:bg-green-700 text-white px-10 rounded-xl font-bold shadow-lg shadow-green-200 w-full sm:w-auto order-1 sm:order-2 h-12"
                 >
                   {isSubmitting ? "Submitting..." : "Complete Onboarding"}
                 </Button>
@@ -1293,12 +1304,13 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                 <Button 
                   type="button" 
                   onClick={nextStep}
-                  className="bg-primary hover:bg-primary/90 text-white px-10 rounded-xl font-bold shadow-lg shadow-primary/20"
+                  className="bg-primary hover:bg-primary/90 text-white px-10 rounded-xl font-bold shadow-lg shadow-primary/20 w-full sm:w-auto order-1 sm:order-2 h-12"
                 >
                   Next Step <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
               )}
             </div>
+/div>
           </form>
         </CardContent>
       </Card>

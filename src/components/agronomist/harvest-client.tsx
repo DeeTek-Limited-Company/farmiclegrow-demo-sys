@@ -476,14 +476,14 @@ export function HarvestClient({
         {filtered.map((h) => (
           <Card key={h.id} className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="text-xl font-black tracking-tight truncate">
                     {h.crop}
                     {h.variety ? <span className="text-slate-400"> · {h.variety}</span> : null}
                     {h.supervisorApproved ? <span className="text-emerald-600"> · Approved</span> : null}
                   </CardTitle>
-                  <p className="text-slate-500 mt-1 font-medium">
+                  <p className="text-slate-500 mt-1 font-medium truncate">
                     <Link href={`/agronomist/farmers/${h.farmerId}`} className="hover:underline">
                       {h.farmer.fullName}
                     </Link>
@@ -493,7 +493,7 @@ export function HarvestClient({
                     Plot: {h.plot.plotName || "Unnamed"} · {format(new Date(h.harvestDate), "MMM d, yyyy")}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                   <Button type="button" size="icon" variant="outline" className="rounded-xl border-slate-200" onClick={() => openEdit(h)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
@@ -542,7 +542,7 @@ export function HarvestClient({
                 return (
                   <div className="pt-2">
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Photos</div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {urls.slice(0, 6).map((url) => (
                         <a
                           key={url}
