@@ -26,7 +26,7 @@ export function TraceHero({ code, crop, quantity, date }: TraceHeroProps) {
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-wrap items-center gap-3 mb-6"
             >
-              <Badge variant="secondary" className="rounded-full px-4 py-1 text-[9px] font-black tracking-[0.2em] uppercase bg-primary text-white border-0 shadow-lg shadow-primary/20">
+              <Badge variant="secondary" className="rounded-full px-4 py-1 text-[9px] font-black tracking-[0.2em] uppercase bg-accent text-white border-0 shadow-lg shadow-accent/20">
                 Verified Batch
               </Badge>
               <Badge variant="outline" className="rounded-full px-4 py-1 text-[9px] font-black tracking-[0.2em] uppercase border-white/20 text-white/60">
@@ -60,16 +60,16 @@ export function TraceHero({ code, crop, quantity, date }: TraceHeroProps) {
             transition={{ delay: 0.3 }}
             className="flex flex-wrap gap-4"
           >
-            <div className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md">
+            <div className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md group hover:bg-white/10 transition-colors">
               <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-3 h-3 text-primary" />
+                <Calendar className="w-3 h-3 text-accent" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Harvested</span>
               </div>
               <div className="text-base font-black">{date}</div>
             </div>
-            <div className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md">
+            <div className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md group hover:bg-white/10 transition-colors">
               <div className="flex items-center gap-2 mb-1">
-                <Package className="w-3 h-3 text-primary" />
+                <Package className="w-3 h-3 text-accent" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Yield</span>
               </div>
               <div className="text-base font-black">{quantity}</div>
