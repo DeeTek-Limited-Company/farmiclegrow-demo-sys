@@ -28,8 +28,14 @@ export async function GET(request: Request) {
       where: { agronomistId: auth.user.id },
       select: { districtId: true },
     });
-    const districtIds = assignments.map((a) => a.districtId);
-    whereClause.id = { in: districtIds.length ? districtIds : ["__none__"] };
+    const allowedDistrictIds = assignments.map((a) => a.districtId);
+
+    if (whereClause.regionId) {
+      // If filtering by region, still must be within assigned districts
+      whereClause.id = { in: allowedDistrictIds.length ? allowedDistrictIds : ["__none__"] };
+    } else {
+      whereClause.id = { in: allowedDistrictIds.length ? allowedDistrictIds : ["__none__"] };
+    }
   }
 
   const districts = await prisma.district.findMany({

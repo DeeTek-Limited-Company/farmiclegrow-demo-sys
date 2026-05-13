@@ -70,6 +70,7 @@ export function Sidebar({
             group: 'Management',
             items: [
               { name: 'User Directory', href: '/admin/users', icon: <Settings className="w-5 h-5" /> },
+              { name: 'Market Inventory', href: '/admin/inventory', icon: <Warehouse className="w-5 h-5" /> },
               { name: 'Agronomist Assignment', href: '/admin/assignments', icon: <ClipboardList className="w-5 h-5" /> },
               { name: 'Document Review', href: '/admin/documents', icon: <FileText className="w-5 h-5" /> },
               { name: 'Locations', href: '/admin/locations', icon: <MapPin className="w-5 h-5" /> },

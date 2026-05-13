@@ -21,7 +21,6 @@ export async function GET(request: Request) {
   const districtId = url.searchParams.get("districtId") || undefined;
 
   let whereClause: any = {};
-  if (districtId) whereClause.districtId = districtId;
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
@@ -29,7 +28,19 @@ export async function GET(request: Request) {
       select: { districtId: true },
     });
     const allowedDistrictIds = assignments.map((a) => a.districtId);
-    whereClause.districtId = { in: allowedDistrictIds.length ? allowedDistrictIds : ["__none__"] };
+    
+    if (districtId) {
+      // If a specific district is requested, ensure it's in the allowed list
+      if (!allowedDistrictIds.includes(districtId)) {
+        return NextResponse.json({ communities: [] });
+      }
+      whereClause.districtId = districtId;
+    } else {
+      // Otherwise return all communities in all allowed districts
+      whereClause.districtId = { in: allowedDistrictIds.length ? allowedDistrictIds : ["__none__"] };
+    }
+  } else if (districtId) {
+    whereClause.districtId = districtId;
   }
 
   const communities = await prisma.community.findMany({

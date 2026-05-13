@@ -90,6 +90,7 @@ export const personalSchema = z.object({
       preprocessOptionalTrimmedString,
       z.union([z.literal(""), z.string().regex(/^GHA-\d{9}-\d{1}$/, "Format must be GHA-XXXXXXXXX-X")]),
     ),
+  bio: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   profilePhoto: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   ghanaCardPhotoUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())

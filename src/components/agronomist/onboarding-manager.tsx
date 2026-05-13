@@ -37,9 +37,29 @@ type FarmerRecord = {
   fullName: string;
   phone: string | null;
   gender: string | null;
+  dateOfBirth: string | null;
+  ghanaCardNumber: string | null;
   bio: string | null;
   externalRef: string | null;
   primaryCrop: string | null;
+  secondaryCrops: any;
+  communityId: string | null;
+  cooperativeName: string | null;
+  ghanaCardPhotoUrl: string | null;
+  certifications: any[];
+  community: {
+    id: string;
+    name: string;
+    districtId: string;
+    district: {
+      id: string;
+      name: string;
+      region: {
+        id: string;
+        name: string;
+      };
+    };
+  } | null;
   farmProfiles: Array<{
     id: string;
     farmName: string;
@@ -49,6 +69,7 @@ type FarmerRecord = {
     irrigationType: string | null;
     numberOfPlots: number | null;
     totalAreaHectare: string | null;
+    farmSitePhotoUrl: string | null;
     locations: Array<{
       id: string;
       latitude: string | null;
@@ -105,6 +126,7 @@ export function OnboardingManager({
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [viewingFarmer, setViewingFarmer] = useState<FarmerRecord | null>(null);
+  const [editingFarmer, setEditingFarmer] = useState<FarmerRecord | null>(null);
 
   async function loadFarmers() {
     setLoading(true);
@@ -171,22 +193,29 @@ export function OnboardingManager({
           <p className="text-primary-foreground/80 font-medium">Manage and register new farmers to the FarmicleGrow platform.</p>
         </div>
         
-        <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
+        <Dialog open={isWizardOpen} onOpenChange={(open) => {
+          setIsWizardOpen(open);
+          if (!open) setEditingFarmer(null);
+        }}>
           <DialogTrigger asChild>
-            <Button size="lg" className="bg-white text-primary hover:bg-slate-50 rounded-2xl font-bold px-8 shadow-lg shadow-black/10">
+            <Button size="lg" className="bg-white text-primary hover:bg-slate-50 rounded-2xl font-bold px-8 shadow-lg shadow-black/10" onClick={() => setEditingFarmer(null)}>
               <UserPlus className="w-5 h-5 mr-2" />
               Register New Farmer
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-5xl p-0 border-none bg-transparent shadow-none top-20 translate-y-0 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="sr-only">
-              <DialogTitle>Farmer Onboarding Wizard</DialogTitle>
-              <DialogDescription>Complete the 6 steps to register a new farmer.</DialogDescription>
+              <DialogTitle>{editingFarmer ? "Edit Farmer Profile" : "Farmer Onboarding Wizard"}</DialogTitle>
+              <DialogDescription>{editingFarmer ? "Update the farmer's information." : "Complete the 6 steps to register a new farmer."}</DialogDescription>
             </div>
-            <FarmerOnboardingWizard onSuccess={() => {
-              setIsWizardOpen(false);
-              loadFarmers();
-            }} />
+            <FarmerOnboardingWizard 
+              initialData={editingFarmer}
+              onSuccess={() => {
+                setIsWizardOpen(false);
+                setEditingFarmer(null);
+                loadFarmers();
+              }} 
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -277,7 +306,18 @@ export function OnboardingManager({
 
                     <div className="flex gap-3 pt-4 border-t border-slate-50">
                       <Button variant="secondary" size="sm" className="flex-1 rounded-xl font-bold text-xs" onClick={() => setViewingFarmer(record)}>
-                        <Edit className="w-3 h-3 mr-2" /> View Details
+                        <User className="w-3 h-3 mr-2" /> View
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1 rounded-xl font-bold text-xs border-primary/20 text-primary hover:bg-primary/5" 
+                        onClick={() => {
+                          setEditingFarmer(record);
+                          setIsWizardOpen(true);
+                        }}
+                      >
+                        <Edit className="w-3 h-3 mr-2" /> Edit
                       </Button>
                       <Button variant="ghost" size="sm" className="w-10 h-10 p-0 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => onDeleteFarmer(record.id)}>
                         <Trash2 className="w-4 h-4" />
@@ -385,13 +425,25 @@ export function OnboardingManager({
                   </div>
                 )}
 
-                <Button 
-                  variant="destructive" 
-                  className="w-full rounded-2xl" 
-                  onClick={() => { setViewingFarmer(null); onDeleteFarmer(viewingFarmer.id); }}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Farmer Record
-                </Button>
+                <div className="flex gap-3 pt-6">
+                  <Button 
+                    className="flex-1 rounded-2xl font-bold" 
+                    onClick={() => {
+                      setEditingFarmer(viewingFarmer);
+                      setViewingFarmer(null);
+                      setIsWizardOpen(true);
+                    }}
+                  >
+                    <Edit className="w-4 h-4 mr-2" /> Edit Profile
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1 rounded-2xl font-bold" 
+                    onClick={() => { setViewingFarmer(null); onDeleteFarmer(viewingFarmer.id); }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  </Button>
+                </div>
               </div>
             );
           })()}

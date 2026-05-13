@@ -13,6 +13,10 @@ export default async function OnboardingPage() {
   const farmers = await prisma.farmer.findMany({
     where: whereClause,
     include: {
+      community: {
+        include: { district: { include: { region: true } } }
+      },
+      certifications: true,
       farmProfiles: {
         include: { locations: true },
         orderBy: { createdAt: "desc" },

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Package, ArrowUpRight, Leaf, CalendarDays, Scale } from "lucide-react";
 import { BatchCreateForm, type BatchEligibleProductionRecord } from "@/components/agronomist/batch-create-form";
+import { QRLabel } from "@/components/agronomist/qr-label";
+import { MilestoneForm } from "@/components/agronomist/milestone-form";
 
 export default async function AgronomistBatchesPage() {
   const user = await requireRole(["admin", "agronomist", "ops"]);
@@ -195,6 +197,16 @@ export default async function AgronomistBatchesPage() {
                           <ArrowUpRight className="w-6 h-6" />
                         </Link>
                       </Button>
+                      <QRLabel
+                        batch={{
+                          batchId: b.batchId,
+                          crop: b.crop,
+                          quantity: Number(b.quantity),
+                          harvestDate: b.harvestDate,
+                          farmerName: b.farmer.fullName,
+                        }}
+                      />
+                      <MilestoneForm batchId={b.batchId} />
                     </div>
                   </div>
                 </div>

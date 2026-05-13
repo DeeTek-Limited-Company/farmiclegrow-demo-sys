@@ -189,12 +189,31 @@ model Batch {
   harvestDate       DateTime
   qrCode            String?
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  farmer            Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  updatedAt     DateTime @updatedAt
+  farmer        Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   productionRecord  ProductionRecord @relation(fields: [productionRecordId], references: [id], onDelete: Cascade)
   movementLogs      MovementLog[]
   warehouseEntries  WarehouseEntry[]
   salesRecords      SalesRecord[]
+  marketplaceListing MarketplaceListing?
+  milestones        BatchMilestone[]
+}
+
+model BatchMilestone {
+  id          String         @id @default(cuid())
+  batchId     String
+  type        MilestoneType
+  status      MilestoneStatus @default(COMPLETED)
+  location    String?
+  performedBy String?
+  notes       String?        @db.Text
+  timestamp   DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
 }
 
 model Document {
@@ -522,10 +541,56 @@ model QualityTest {
   passed          Boolean
   testedBy        String?
   notes           String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  harvest         HarvestRecord @relation(fields: [harvestId], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  harvest       HarvestRecord @relation(fields: [harvestId], references: [id], onDelete: Cascade)
 
   @@index([harvestId, dateTested])
   @@index([passed])
+}
+
+enum MilestoneType {
+  CLEANING
+  GRADING
+  PACKAGING
+  PORT_ARRIVAL
+  PORT_DEPARTURE
+  IN_TRANSIT
+  DELIVERED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  SOLD_OUT
+  ARCHIVED
+}
+
+model MarketplaceListing {
+  id              String        @id @default(cuid())
+  batchId         String        @unique
+  title           String
+  description     String?       @db.Text
+  price           Decimal       @db.Decimal(12, 2)
+  currency        String        @default("USD")
+  status          ListingStatus @default(DRAFT)
+  images          String[]      // Array of URLs
+  category        String?       // e.g., "Grains", "Vegetables"
+  tags            String[]
+  isFeatured      Boolean       @default(false)
+  minOrderQuantity Decimal?      @db.Decimal(12, 2)
+  unit            String?       // e.g., "kg", "MT", "bag"
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  batch           Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([category])
 }
