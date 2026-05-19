@@ -24,6 +24,16 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Edit,
   Trash2,
   UserPlus,
@@ -127,6 +137,8 @@ export function OnboardingManager({
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [viewingFarmer, setViewingFarmer] = useState<FarmerRecord | null>(null);
   const [editingFarmer, setEditingFarmer] = useState<FarmerRecord | null>(null);
+  const [farmerToDelete, setFarmerToDelete] = useState<FarmerRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function loadFarmers() {
     setLoading(true);
@@ -146,18 +158,25 @@ export function OnboardingManager({
     }
   }
 
-  async function onDeleteFarmer(farmerId: string) {
-    if (!confirm("Are you sure you want to delete this record?")) return;
+  async function confirmDelete() {
+    if (!farmerToDelete) return;
+    setIsDeleting(true);
 
-    const response = await apiFetch(`/api/farmers/${farmerId}`, { method: "DELETE" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.message ?? "Unable to delete farmer record.");
-      return;
+    try {
+      const response = await apiFetch(`/api/farmers/${farmerToDelete.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(body?.message ?? "Unable to delete farmer record.");
+        return;
+      }
+
+      toast.success("Farmer record deleted.");
+      setViewingFarmer(null);
+      await loadFarmers();
+    } finally {
+      setIsDeleting(false);
+      setFarmerToDelete(null);
     }
-
-    toast.success("Farmer record deleted.");
-    await loadFarmers();
   }
 
   const copyToClipboard = (text: string) => {
@@ -319,7 +338,7 @@ export function OnboardingManager({
                       >
                         <Edit className="w-3 h-3 mr-2" /> Edit
                       </Button>
-                      <Button variant="ghost" size="sm" className="w-10 h-10 p-0 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => onDeleteFarmer(record.id)}>
+                      <Button variant="ghost" size="sm" className="w-10 h-10 p-0 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setFarmerToDelete(record)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -439,7 +458,7 @@ export function OnboardingManager({
                   <Button 
                     variant="destructive" 
                     className="flex-1 rounded-2xl font-bold" 
-                    onClick={() => { setViewingFarmer(null); onDeleteFarmer(viewingFarmer.id); }}
+                    onClick={() => { setFarmerToDelete(viewingFarmer); }}
                   >
                     <Trash2 className="w-4 h-4 mr-2" /> Delete
                   </Button>
@@ -449,6 +468,31 @@ export function OnboardingManager({
           })()}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!farmerToDelete} onOpenChange={(open) => !open && !isDeleting && setFarmerToDelete(null)}>
+        <AlertDialogContent className="rounded-[2.5rem] border-0 shadow-2xl p-8">
+          <AlertDialogHeader className="space-y-3">
+            <AlertDialogTitle className="text-2xl font-black text-slate-900">Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription className="text-base text-slate-600 font-medium leading-relaxed">
+              This action cannot be undone. This will permanently delete <strong>{farmerToDelete?.fullName}</strong> and all associated data, including farm plots, harvest records, and login access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-8 gap-3">
+            <AlertDialogCancel disabled={isDeleting} className="rounded-xl h-12 px-6 font-bold mt-0">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              disabled={isDeleting} 
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }} 
+              className="bg-red-500 hover:bg-red-600 text-white rounded-xl h-12 px-6 font-bold shadow-lg shadow-red-500/20"
+            >
+              {isDeleting ? <Spinner className="w-4 h-4 mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              {isDeleting ? "Deleting..." : "Yes, Delete Farmer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

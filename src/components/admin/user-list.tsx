@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Shield, User, Mail, Calendar, Power, MoreHorizontal, Pencil } from "lucide-react";
+import { Shield, User, Mail, Calendar, Power, MoreHorizontal, Pencil, MapPin, Building2, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EditUserModal } from "./edit-user-modal";
 import {
@@ -29,6 +29,12 @@ type UserWithRoles = {
       key: string;
     }
   }>;
+  buyerProfile?: {
+    companyName: string;
+    phoneNumber: string | null;
+    businessAddress: string | null;
+    country: string | null;
+  } | null;
 };
 
 export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
@@ -67,6 +73,7 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
           <TableRow>
             <TableHead className="w-[250px]">User</TableHead>
             <TableHead>Roles</TableHead>
+            <TableHead>Business Details</TableHead>
             <TableHead>Joined</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Active</TableHead>
@@ -97,6 +104,27 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
                     </Badge>
                   ))}
                 </div>
+              </TableCell>
+              <TableCell>
+                {user.buyerProfile ? (
+                  <div className="flex flex-col gap-1 max-w-[200px]">
+                    <span className="text-xs font-bold text-primary flex items-center gap-1">
+                      <Building2 className="w-3 h-3" /> {user.buyerProfile.companyName}
+                    </span>
+                    {user.buyerProfile.phoneNumber && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Phone className="w-2.5 h-2.5" /> {user.buyerProfile.phoneNumber}
+                      </span>
+                    )}
+                    {user.buyerProfile.businessAddress && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 italic truncate">
+                        <MapPin className="w-2.5 h-2.5" /> {user.buyerProfile.businessAddress}, {user.buyerProfile.country}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">N/A</span>
+                )}
               </TableCell>
               <TableCell>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">

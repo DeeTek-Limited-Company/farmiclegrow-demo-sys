@@ -6,7 +6,9 @@ export default async function AgronomistMovementsPage() {
   const user = await requireRole(["admin", "agronomist", "ops"]);
 
   const batchWhere: any = {};
-  const movementWhere: any = {};
+  const movementWhere: any = {
+    orderId: null // Only show internal movements (not linked to an order)
+  };
 
   if (!user.roles.includes("admin") && !user.roles.includes("ops") && user.roles.includes("agronomist")) {
     const assignments = await prisma.agronomistDistrict.findMany({

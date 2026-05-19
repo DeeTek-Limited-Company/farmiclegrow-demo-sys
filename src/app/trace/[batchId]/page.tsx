@@ -15,7 +15,8 @@ import {
   Leaf,
   Beaker,
   History,
-  ArrowRight
+  ArrowRight,
+  FileText
 } from "lucide-react";
 import { TraceHero } from "@/components/trace/trace-hero";
 import { FarmerProfileCard } from "@/components/trace/farmer-profile-card";
@@ -23,13 +24,20 @@ import { QualityScorecard } from "@/components/trace/quality-scorecard";
 
 type PageProps = {
   params: Promise<{ batchId: string }>;
+  searchParams: Promise<{ orderId?: string }>;
 };
 
-export default async function TraceBatchPage({ params }: PageProps) {
+export default async function TraceBatchPage({ params, searchParams }: PageProps) {
   const { batchId } = await params;
+  const { orderId } = await searchParams;
 
-  const batch = await prisma.batch.findUnique({
-    where: { batchId },
+  const batch = await prisma.batch.findFirst({
+    where: {
+      OR: [
+        { id: batchId },
+        { batchId: batchId }
+      ]
+    },
     include: {
       farmer: {
         include: {
@@ -46,6 +54,12 @@ export default async function TraceBatchPage({ params }: PageProps) {
       warehouseEntries: { orderBy: { dateIn: "asc" } },
       salesRecords: { orderBy: { dateSold: "asc" } },
       milestones: { orderBy: { timestamp: "asc" } },
+      orderItems: {
+        include: {
+          order: true
+        },
+        take: 1
+      }
     },
   });
 
@@ -66,56 +80,50 @@ export default async function TraceBatchPage({ params }: PageProps) {
 
   // --- Process Timeline Events ---
   
-  // 1. Production Events
-  const productionEvents = [];
-  
-  productionEvents.push({
-    id: `creation-${batch.id}`,
-    date: batch.createdAt,
-    title: "Batch Verification",
-    location: "Farm Gate",
-    type: "origin",
-    details: [
-      { label: "Batch ID", value: batch.batchId },
-      { label: "Crop", value: batch.crop },
-      { label: "Quantity", value: `${Number(batch.quantity)}` },
-    ],
-    status: "verified",
-    icon: QrCode
-  });
+  // Logical order for sorting if dates are same (Ascending: 1 is earliest)
+  const eventPriority: Record<string, number> = {
+    'harvest': 1,
+    'batch_verification': 2,
+    'quality_analysis': 3,
+    'internal_transit_start': 4,
+    'internal_transit_destination': 5,
+    'order_confirmed': 6,
+    'milestone': 7,
+    'dispatch_to_buyer': 8,
+    'delivered': 9,
+  };
 
+  const allEvents: any[] = [];
+
+  // 1. Harvest & Origin
   for (const harvest of harvestRecords) {
-    productionEvents.push({
+    allEvents.push({
       id: `harvest-${harvest.id}`,
       date: harvest.harvestDate,
       title: "Harvest Logged",
       location: canonicalCommunity?.name || "Farm",
-      type: "origin",
+      type: "harvest",
       details: [
         { label: "Crop", value: harvest.crop },
         { label: "Quantity Harvested", value: `${harvest.quantityHarvested || '—'} ${harvest.unit || 'MT'}` },
         { label: "Initial Quality Grade", value: harvest.initialQualityGrade || "Grade A" },
-        { label: "Supervisor Approved", value: harvest.supervisorApproved ? "YES" : "NO" },
       ],
       status: "verified",
       icon: Leaf
     });
 
     for (const test of harvest.qualityTests) {
-      productionEvents.push({
+      allEvents.push({
         id: `test-${test.id}`,
         date: test.dateTested,
         title: "Quality Analysis",
         location: "Lab Center",
-        type: "quality",
+        type: "quality_analysis",
         details: [
           { label: "Passed", value: test.passed ? "true" : "false" },
-          { label: "Moisture Pct", value: `${test.moisturePct || '—'}` },
-          { label: "Foreign Matter Pct", value: `${test.foreignMatterPct || '—'}` },
-          { label: "Broken Grain Pct", value: `${test.brokenGrainPct || '—'}` },
-          { label: "Aflatoxin Test", value: test.aflatoxinTest || "Negative" },
-          { label: "Color Grade", value: test.colorGrade || "N/A" },
-          { label: "Pest Damage", value: test.pestDamage || "None" },
+          { label: "Moisture Pct", value: `${test.moisturePct || '—'}%` },
+          { label: "Purity Pct", value: test.foreignMatterPct ? `${100 - Number(test.foreignMatterPct)}%` : '99%' },
+          { label: "Aflatoxin", value: test.aflatoxinTest || "Negative" },
         ],
         status: "verified",
         icon: Beaker
@@ -123,78 +131,123 @@ export default async function TraceBatchPage({ params }: PageProps) {
     }
   }
 
-  // 2. Logistics Events
-  const logisticsEvents = [];
+  // 2. Batch Verification
+  allEvents.push({
+    id: `creation-${batch.id}`,
+    date: batch.createdAt,
+    title: "Batch Verification",
+    location: "Farm Gate",
+    type: "batch_verification",
+    details: [
+      { label: "Batch ID", value: batch.batchId },
+      { label: "Crop", value: batch.crop },
+      { label: "Total Quantity", value: `${Number(batch.quantity)} MT` },
+    ],
+    status: "verified",
+    icon: QrCode
+  });
 
+  // 3. Logistics (Internal & Buyer)
   for (const move of batch.movementLogs) {
-    logisticsEvents.push({
+    const isFinalDelivery = !!move.orderId;
+    
+    // HYBRID LOGIC: 
+    // - If it's a final delivery (linked to an order), ONLY show it if it matches the current orderId.
+    // - If it's an internal transit (no orderId), show it to everyone.
+    if (isFinalDelivery && move.orderId !== orderId) {
+      continue;
+    }
+
+    allEvents.push({
       id: `move-${move.id}`,
       date: move.dispatchDate,
-      title: "Transit Start",
-      location: "Logistics Route",
-      type: "logistics",
+      title: isFinalDelivery ? "Dispatch to Buyer" : "Internal Transit Start",
+      location: isFinalDelivery ? "Export Hub" : "Internal Route",
+      type: isFinalDelivery ? "dispatch_to_buyer" : "internal_transit_start",
       details: [
-        { label: "From Location", value: move.fromLocation },
-        { label: "To Location", value: move.toLocation },
-        { label: "Quantity Sent", value: `${move.quantitySent || '—'}` },
+        { label: "From", value: move.fromLocation },
+        { label: "To", value: move.toLocation },
+        { label: "Driver", value: move.driverName || "N/A" },
+        { label: "Vehicle", value: move.vehicleNumber || "N/A" },
       ],
-      status: move.arrivalDate ? "COMPLETED" : "IN_PROGRESS",
-      icon: Truck
+      status: "COMPLETED",
+      icon: isFinalDelivery ? Handshake : Truck
     });
 
     if (move.arrivalDate) {
-      logisticsEvents.push({
+      allEvents.push({
         id: `arrival-${move.id}`,
         date: move.arrivalDate,
-        title: "Destination Arrival",
+        title: isFinalDelivery ? "Delivered" : "Internal Transit Destination",
         location: move.toLocation,
-        type: "logistics",
+        type: isFinalDelivery ? "delivered" : "internal_transit_destination",
         details: [
-          { label: "To Location", value: move.toLocation },
-          { label: "Quantity Received", value: `${move.quantityReceived || '—'}` },
-          { label: "Condition On Arrival", value: move.conditionOnArrival || 'Excellent' },
+          { label: "Destination", value: move.toLocation },
+          { label: "Condition", value: move.conditionOnArrival || 'Excellent' },
         ],
         status: "COMPLETED",
-        icon: CheckCircle2
+        icon: isFinalDelivery ? CheckCircle2 : Warehouse
       });
     }
   }
 
-  for (const entry of batch.warehouseEntries) {
-    logisticsEvents.push({
-      id: `wh-${entry.id}`,
-      date: entry.dateIn,
-      title: "Safety Storage",
-      location: entry.warehouseName,
-      type: "logistics",
+  // 4. Order Confirmed
+  if (batch.orderItems && batch.orderItems.length > 0) {
+    const order = batch.orderItems[0].order;
+    
+    // Only show if we are in a specific order context
+    if (order.id === orderId) {
+      allEvents.push({
+        id: `order-${order.id}`,
+        date: order.createdAt,
+        title: "Order Confirmed",
+        location: "Platform",
+        type: "order_confirmed",
+        details: [
+          { label: "Order #", value: order.orderNumber },
+          { label: "Status", value: order.status },
+        ],
+        status: "COMPLETED",
+        icon: FileText
+      });
+    }
+  }
+
+  // 5. Milestones (Cleaning, Packaging, etc.)
+  for (const m of batch.milestones) {
+    allEvents.push({
+      id: m.id,
+      date: m.timestamp,
+      title: m.type.replace("_", " "),
+      location: m.location || "Warehouse",
+      type: "milestone",
       details: [
-        { label: "Warehouse", value: entry.warehouseName },
-        { label: "Storage Condition", value: "Ambient" },
+        { label: "Activity", value: m.type.replace("_", " ") },
+        { label: "Notes", value: m.notes || "Standard processing" },
       ],
-      status: entry.dateOut ? "COMPLETED" : "IN_PROGRESS",
-      icon: Warehouse
+      status: m.status,
+      icon: ShieldCheck
     });
   }
 
-  // 3. Milestone Events (Internal)
-  const milestoneEvents = batch.milestones.map((m) => ({
-    id: m.id,
-    date: m.timestamp,
-    title: m.type.replace("_", " "),
-    location: m.location || "Supply Chain",
-    type: "milestone",
-    details: [
-      { label: "Activity", value: m.type.replace("_", " ") },
-      { label: "Notes", value: m.notes || "No extra notes" },
-    ],
-    status: m.status,
-    icon: ShieldCheck
-  }));
+  // Final Sort (Primary: Logical Priority, Secondary: Date)
+  const sortedEvents = allEvents.sort((a, b) => {
+    const priorityA = eventPriority[a.type] || 99;
+    const priorityB = eventPriority[b.type] || 99;
 
-  // Combine All for History Tab
-  const allEvents = [...productionEvents, ...logisticsEvents, ...milestoneEvents].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  );
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return dateA - dateB;
+  });
+
+  // Separate for specialized tabs (keep original names for compatibility)
+  const productionEvents = sortedEvents.filter(e => ['harvest', 'batch_verification', 'quality_analysis'].includes(e.type));
+  const logisticsEvents = sortedEvents.filter(e => ['internal_transit_start', 'internal_transit_destination', 'dispatch_to_buyer', 'delivered'].includes(e.type));
+  const milestoneEvents = sortedEvents.filter(e => e.type === 'milestone' || e.type === 'order_confirmed');
 
   // Dynamic Metrics for Scorecard
   const latestTest = harvestRecords.flatMap(h => h.qualityTests).sort((a, b) => b.dateTested.getTime() - a.dateTested.getTime())[0];
@@ -273,7 +326,7 @@ export default async function TraceBatchPage({ params }: PageProps) {
                 </div>
 
                 <TabsContent value="all" className="mt-0">
-                   <Timeline items={allEvents} />
+                   <Timeline items={sortedEvents} />
                 </TabsContent>
                 <TabsContent value="origin" className="mt-0">
                    <Timeline items={productionEvents} />

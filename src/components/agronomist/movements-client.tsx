@@ -222,10 +222,10 @@ export function MovementsClient({
         <div>
           <h1 className="text-4xl font-black tracking-tight text-slate-900 flex items-center gap-3">
             <Truck className="w-8 h-8 text-primary" />
-            Movement Log
+            Internal Movements
           </h1>
           <p className="text-slate-500 mt-2 font-medium max-w-2xl">
-            Track dispatch and arrival milestones for each batch (farm → warehouse → port → buyer).
+            Track dispatch and arrival milestones for internal transit (farm → aggregation center → warehouse).
           </p>
         </div>
         <Button onClick={openCreate} className="rounded-2xl font-bold h-12 px-6 shadow-xl shadow-primary/20">

@@ -63,6 +63,7 @@ export function Sidebar({
             items: [
               { name: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="w-5 h-5" /> },
               { name: 'Farmers', href: '/admin/farmers', icon: <Users className="w-5 h-5" /> },
+              { name: 'Order Pipeline', href: '/admin/orders', icon: <ShoppingCart className="w-5 h-5" /> },
               { name: 'Review Queue', href: '/admin/submissions', icon: <CheckCircle className="w-5 h-5" /> },
             ]
           },
@@ -70,6 +71,7 @@ export function Sidebar({
             group: 'Management',
             items: [
               { name: 'User Directory', href: '/admin/users', icon: <Settings className="w-5 h-5" /> },
+              { name: 'Marketplace', href: '/admin/marketplace', icon: <ShoppingCart className="w-5 h-5" /> },
               { name: 'Market Inventory', href: '/admin/inventory', icon: <Warehouse className="w-5 h-5" /> },
               { name: 'Agronomist Assignment', href: '/admin/assignments', icon: <ClipboardList className="w-5 h-5" /> },
               { name: 'Document Review', href: '/admin/documents', icon: <FileText className="w-5 h-5" /> },
@@ -127,9 +129,8 @@ export function Sidebar({
             group: 'Traceability',
             items: [
               { name: 'Batches', href: '/agronomist/batches', icon: <Package className="w-5 h-5" /> },
-              { name: 'Movement Logs', href: '/agronomist/movements', icon: <Truck className="w-5 h-5" /> },
-              { name: 'Warehousing', href: '/agronomist/warehousing', icon: <Warehouse className="w-5 h-5" /> },
-              { name: 'Sales Records', href: '/agronomist/sales', icon: <Handshake className="w-5 h-5" /> },
+              { name: 'Internal Movements', href: '/agronomist/movements', icon: <Truck className="w-5 h-5" /> },
+              { name: 'Warehouse Entry', href: '/agronomist/warehousing', icon: <Warehouse className="w-5 h-5" /> },
             ]
           },
           {

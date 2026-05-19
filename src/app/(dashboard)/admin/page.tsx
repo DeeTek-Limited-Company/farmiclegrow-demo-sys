@@ -221,6 +221,7 @@ export default async function AdminPage() {
         <KpiCard title="Unvalidated GPS" value={unvalidatedLocationsCount.toLocaleString()} href="/agronomist/locations" tone="amber" icon={<MapPin className="w-4 h-4" />} />
         <KpiCard title="Avg Quality" value={`${avgQuality}/100`} href="/admin/farmers" tone="emerald" icon={<ShieldCheck className="w-4 h-4" />} />
         <KpiCard title="Market Listings" value={activeListingsCount.toLocaleString()} href="/admin/inventory" tone="blue" icon={<TrendingUp className="w-4 h-4" />} />
+        <KpiCard title="Orders" value={totalBatches.toLocaleString()} href="/admin/orders" tone="slate" icon={<Package className="w-4 h-4" />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

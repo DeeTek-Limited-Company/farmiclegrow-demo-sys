@@ -249,24 +249,43 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: "Farmer not found or unauthorized." }, { status: 404 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    // Delete the Farmer record — Prisma cascades to:
-    //   FarmProfile → FarmLocation
-    //   ProductionRecord
-    //   Certification
-    //   FarmerSubmission → ApprovalAction
-    await tx.farmer.delete({ where: { id: farmerId } });
-
-    // Also delete the linked User account (login credentials)
-    if (existing.externalRef) {
-      const linkedUser = await tx.user.findUnique({
-        where: { id: existing.externalRef },
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Manually cascade delete OrderItems related to the farmer's Batches
+      // (This bypasses the need for a Prisma schema 'db push' which is failing on Supabase)
+      const batches = await tx.batch.findMany({
+        where: { farmerId: farmerId },
+        select: { id: true }
       });
-      if (linkedUser) {
-        await tx.user.delete({ where: { id: existing.externalRef } });
+      
+      const batchIds = batches.map((b) => b.id);
+      if (batchIds.length > 0) {
+        await tx.orderItem.deleteMany({
+          where: { batchId: { in: batchIds } }
+        });
       }
-    }
-  });
 
-  return NextResponse.json({ message: "Farmer and all associated records deleted successfully." });
+      // 2. Delete the Farmer record — Prisma cascades to:
+      //   FarmProfile → FarmLocation
+      //   ProductionRecord
+      //   Certification
+      //   FarmerSubmission → ApprovalAction
+      await tx.farmer.delete({ where: { id: farmerId } });
+
+      // Also delete the linked User account (login credentials)
+      if (existing.externalRef) {
+        const linkedUser = await tx.user.findUnique({
+          where: { id: existing.externalRef },
+        });
+        if (linkedUser) {
+          await tx.user.delete({ where: { id: existing.externalRef } });
+        }
+      }
+    });
+
+    return NextResponse.json({ message: "Farmer and all associated records deleted successfully." });
+  } catch (error: any) {
+    console.error("Failed to delete farmer:", error);
+    return NextResponse.json({ message: error.message || "Failed to delete farmer due to database constraints." }, { status: 500 });
+  }
 }

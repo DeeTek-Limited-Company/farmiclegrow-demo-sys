@@ -61,7 +61,8 @@ export const prisma: PrismaClient =
         "qualityTest" in globalForPrisma.prisma &&
         "movementLog" in globalForPrisma.prisma &&
         "warehouseEntry" in globalForPrisma.prisma &&
-        "salesRecord" in globalForPrisma.prisma
+        "salesRecord" in globalForPrisma.prisma &&
+        "buyerProfile" in globalForPrisma.prisma
       ? globalForPrisma.prisma
       : new PrismaClient({
           adapter: new PrismaPg(

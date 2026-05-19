@@ -241,10 +241,10 @@ export function WarehousingClient({
         <div>
           <h1 className="text-4xl font-black tracking-tight text-slate-900 flex items-center gap-3">
             <Warehouse className="w-8 h-8 text-primary" />
-            Warehousing
+            Warehouse Entry
           </h1>
           <p className="text-slate-500 mt-2 font-medium max-w-2xl">
-            Record warehouse entry/exit, stack number, storage conditions, and quantity stored for each batch.
+            Log produce arrival and storage conditions at the aggregation warehouse.
           </p>
         </div>
         <Button onClick={openCreate} className="rounded-2xl font-bold h-12 px-6 shadow-xl shadow-primary/20">

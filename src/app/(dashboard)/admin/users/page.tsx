@@ -14,6 +14,7 @@ export default async function AdminUsersPage() {
           role: true,
         },
       },
+      buyerProfile: true,
     },
     orderBy: { createdAt: "desc" },
   });
