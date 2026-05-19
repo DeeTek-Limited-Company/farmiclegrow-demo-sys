@@ -75,8 +75,9 @@ export function MarketplaceClient({
         })
       });
 
-      if (response.error) {
-        throw new Error(response.error);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to request quote");
       }
 
       toast.success("Quote requested successfully! You can track it in your orders.");

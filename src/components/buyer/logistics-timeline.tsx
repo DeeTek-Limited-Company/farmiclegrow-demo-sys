@@ -52,7 +52,7 @@ export function LogisticsTimeline({ order }: { order: any }) {
   function getStepStatus(stepId: string, currentStatus: OrderStatus): "complete" | "current" | "upcoming" | "error" {
     const statusOrder: OrderStatus[] = ["PENDING", "NEGOTIATING", "CONFIRMED", "DISPATCHED", "DELIVERED", "COMPLETED"];
     const currentIndex = statusOrder.indexOf(currentStatus);
-    const stepIndex = statusOrder.indexOf(stepId === "PENDING" ? "PENDING" : stepId);
+    const stepIndex = statusOrder.indexOf((stepId === "PENDING" ? "PENDING" : stepId) as OrderStatus);
 
     if (currentStatus === "CANCELLED") return "error";
     if (stepIndex < currentIndex) return "complete";

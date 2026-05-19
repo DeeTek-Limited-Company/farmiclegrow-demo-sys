@@ -47,8 +47,11 @@ export function OrderChat({ orderId, currentUserId }: OrderChatProps) {
   async function fetchMessages() {
     try {
       const response = await apiFetch(`/api/orders/${orderId}/messages`);
-      if (response.messages) {
-        setMessages(response.messages);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.messages) {
+          setMessages(data.messages);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch messages:", error);
@@ -68,8 +71,14 @@ export function OrderChat({ orderId, currentUserId }: OrderChatProps) {
         body: JSON.stringify({ content: newMessage }),
       });
 
-      if (response.message) {
-        setMessages([...messages, response.message]);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to send message");
+      }
+
+      const data = await response.json();
+      if (data.message) {
+        setMessages([...messages, data.message]);
         setNewMessage("");
       }
     } catch (error: any) {
