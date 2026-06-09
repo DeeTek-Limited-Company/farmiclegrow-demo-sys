@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export default function BuyerSignupPage() {
+export default function GlobalBuyerSignupPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -31,6 +31,7 @@ export default function BuyerSignupPage() {
 
     setIsSubmitting(true);
     try {
+      // Global signup - no orgSlug sent
       const res = await apiFetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,7 +48,8 @@ export default function BuyerSignupPage() {
       }
 
       toast.success("Account created. Welcome!");
-      router.replace("/buyer");
+      // Redirect to global buyer dashboard
+      router.replace(`/buyer`);
       router.refresh();
     } finally {
       setIsSubmitting(false);
@@ -59,7 +61,7 @@ export default function BuyerSignupPage() {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Create Buyer Account</CardTitle>
-          <CardDescription>Sign up to request quotes, place orders, and chat with sellers.</CardDescription>
+          <CardDescription>Sign up to request quotes, place orders, and chat with sellers across the platform.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -96,19 +98,23 @@ export default function BuyerSignupPage() {
                 disabled={isSubmitting}
               />
             </div>
-            <Button className="w-full" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating account..." : "Create account"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Creating account..." : "Sign up"}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-between">
-          <div className="text-sm text-muted-foreground">Already have an account?</div>
-          <Button asChild variant="link" className="px-0">
-            <Link href="/">Sign in</Link>
-          </Button>
+        <CardFooter className="flex flex-col space-y-2">
+          <div className="text-sm text-slate-500">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline font-bold">
+              Log in
+            </Link>
+          </div>
+          <div className="text-xs text-slate-400">
+            By signing up, you agree to our Terms of Service and Privacy Policy.
+          </div>
         </CardFooter>
       </Card>
     </div>
   );
 }
-

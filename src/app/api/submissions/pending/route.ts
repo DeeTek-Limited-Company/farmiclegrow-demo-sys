@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 export async function GET() {
   const auth = await requireApiRole(["admin", "ops"]);
@@ -8,8 +9,10 @@ export async function GET() {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const submissions = await prisma.farmerSubmission.findMany({
-    where: { status: "PENDING_REVIEW" },
+    where: { status: "PENDING_REVIEW", organizationId },
     include: {
       farmer: {
         include: {

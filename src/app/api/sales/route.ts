@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmpty(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -26,19 +27,24 @@ export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const url = new URL(request.url);
   const batchId = url.searchParams.get("batchId");
 
-  const whereClause: any = {};
+  const whereClause: any = { organizationId };
   if (batchId) whereClause.batchId = batchId;
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
-    whereClause.batch = { farmer: { community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } } } };
+    whereClause.batch = {
+      organizationId,
+      farmer: { community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } } },
+    };
   }
 
   const sales = await prisma.salesRecord.findMany({
@@ -57,6 +63,8 @@ export async function POST(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -68,20 +76,25 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: data.batchId },
+  const batch = await prisma.batch.findFirst({
+    where: { id: data.batchId, organizationId },
     include: { farmer: { select: { communityId: true } } },
   });
   if (!batch) return NextResponse.json({ message: "Batch not found." }, { status: 404 });
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     const districtId = batch.farmer.communityId
-      ? (await prisma.community.findUnique({ where: { id: batch.farmer.communityId }, select: { districtId: true } }))?.districtId
+      ? (
+          await prisma.community.findFirst({
+            where: { id: batch.farmer.communityId, organizationId },
+            select: { districtId: true },
+          })
+        )?.districtId
       : null;
     if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "You are not assigned to this batch's district." }, { status: 403 });
@@ -90,6 +103,7 @@ export async function POST(request: Request) {
 
   const created = await prisma.salesRecord.create({
     data: {
+      organizationId: batch.organizationId,
       batchId: data.batchId,
       buyerName: data.buyerName,
       buyerType: data.buyerType || null,
@@ -104,4 +118,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ sale: created }, { status: 201 });
 }
-

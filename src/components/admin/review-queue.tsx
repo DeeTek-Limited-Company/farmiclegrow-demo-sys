@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { CheckCircle2, XCircle, User, MapPin, Sprout, ClipboardCheck, History } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
 
 type PendingSubmission = {
   id: string;
@@ -55,6 +56,9 @@ export function ReviewQueue({ initialQueue }: ReviewQueueProps) {
   const [queue, setQueue] = useState<PendingSubmission[]>(initialQueue);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
   const [busyById, setBusyById] = useState<Record<string, boolean>>({});
+  const { user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => (orgBase ? `${orgBase}${href}` : href);
 
   async function loadQueue() {
     try {
@@ -151,7 +155,7 @@ export function ReviewQueue({ initialQueue }: ReviewQueueProps) {
                       Submitted {new Date(submission.submittedAt).toLocaleString()}
                     </div>
                     <Button asChild variant="outline" className="rounded-xl font-bold">
-                      <Link href={`/admin/submissions/${submission.id}`}>
+                      <Link href={withOrg(`/admin/submissions/${submission.id}`)}>
                         View details
                       </Link>
                     </Button>

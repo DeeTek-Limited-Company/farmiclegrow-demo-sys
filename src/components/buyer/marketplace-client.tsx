@@ -32,6 +32,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { buildOrgTraceUrl } from "@/lib/trace/urls";
 
 export function MarketplaceClient({ 
   initialListings,
@@ -75,9 +76,9 @@ export function MarketplaceClient({
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to request quote");
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Request failed');
       }
 
       toast.success("Quote requested successfully! You can track it in your orders.");
@@ -139,7 +140,10 @@ export function MarketplaceClient({
                 <div className="flex items-center gap-2 text-slate-500 mt-2">
                   <MapPin className="w-3 h-3 text-primary" />
                   <span className="text-[10px] font-bold uppercase tracking-wider truncate max-w-[150px]">
-                    {listing.batch.farmer.community?.name}, {listing.batch.farmer.community?.district.name}
+                    {listing.batch.farmer?.community?.name ?? listing.organization.name}
+                    {listing.batch.farmer?.community?.district?.name
+                      ? `, ${listing.batch.farmer.community.district.name}`
+                      : ""}
                   </span>
                 </div>
               </div>
@@ -179,7 +183,16 @@ export function MarketplaceClient({
                 Request Quote
               </Button>
               <Button asChild variant="outline" size="icon" className="w-12 h-12 rounded-2xl border-slate-200">
-                <Link href={`/trace/${listing.batch.batchId}`} target="_blank">
+                <Link
+                  href={buildOrgTraceUrl({
+                    orgSlug: listing.organization.slug,
+                    batchId: listing.batch.batchId,
+                    configuredUrl: process.env.NEXT_PUBLIC_SITE_URL,
+                    nodeEnv: process.env.NODE_ENV,
+                    windowOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+                  })}
+                  target="_blank"
+                >
                   <ArrowUpRight className="w-5 h-5" />
                 </Link>
               </Button>

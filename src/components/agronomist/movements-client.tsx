@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { buildInternalOrgTracePath } from "@/lib/trace/urls";
 
 type BatchOption = {
   id: string;
@@ -77,6 +78,8 @@ export function MovementsClient({
   initialBatches: BatchOption[];
   initialMovements: MovementRow[];
 }) {
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = String(params.orgSlug || "");
   const router = useRouter();
   const [movements, setMovements] = useState<MovementRow[]>(initialMovements);
   const [q, setQ] = useState("");
@@ -259,7 +262,7 @@ export function MovementsClient({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <CardTitle className="text-xl font-black tracking-tight truncate">
-                    <Link href={`/trace/${m.batch.batchId}`} className="hover:underline">
+                    <Link href={buildInternalOrgTracePath(orgSlug, m.batch.batchId)} className="hover:underline">
                       {m.batch.batchId}
                     </Link>
                     <span className="text-slate-400"> · {m.batch.crop}</span>
@@ -412,4 +415,3 @@ export function MovementsClient({
     </div>
   );
 }
-

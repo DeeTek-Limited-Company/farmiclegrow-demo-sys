@@ -3,85 +3,68 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
-type RouteContext = {
-  params: Promise<{ userId: string }>;
-};
-
-const putSchema = z.object({
-  districtIds: z.array(z.string().cuid()).max(50),
+const assignmentSchema = z.object({
+  districtIds: z.array(z.string()),
 });
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function PUT(
+  request: Request,
+  context: { params: Promise<{ userId: string }> }
+) {
   const auth = await requireApiRole(["admin"]);
-  if (!auth.ok) {
-    return NextResponse.json({ message: auth.message }, { status: auth.status });
-  }
+  if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
-  const { userId } = await context.params;
-
-  const assignments = await prisma.agronomistDistrict.findMany({
-    where: { agronomistId: userId },
-    include: { district: { include: { region: true } } },
-    orderBy: [{ district: { region: { name: "asc" } } }, { district: { name: "asc" } }],
-  });
-
-  return NextResponse.json({
-    districtIds: assignments.map((a) => a.districtId),
-    districts: assignments.map((a) => a.district),
-  });
-}
-
-export async function PUT(request: Request, context: RouteContext) {
-  const auth = await requireApiRole(["admin"]);
-  if (!auth.ok) {
-    return NextResponse.json({ message: auth.message }, { status: auth.status });
-  }
-
-  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
-  const userAgent = request.headers.get("user-agent") || undefined;
+  const organizationId = requireOrgScope(auth.user);
 
   const { userId } = await context.params;
   const payload = await request.json().catch(() => null);
-  const parsed = putSchema.safeParse(payload);
+  const parsed = assignmentSchema.safeParse(payload);
+
   if (!parsed.success) {
-    return NextResponse.json({ message: "Invalid payload", errors: parsed.error.flatten().fieldErrors }, { status: 400 });
+    return NextResponse.json({ message: "Invalid payload" }, { status: 400 });
   }
 
-  const districtIds = Array.from(new Set(parsed.data.districtIds));
-
-  const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-  if (!userExists) {
-    return NextResponse.json({ message: "User not found" }, { status: 404 });
-  }
-
-  const existingDistricts = await prisma.district.findMany({
-    where: { id: { in: districtIds } },
-    select: { id: true },
-  });
-  const existingIds = new Set(existingDistricts.map((d) => d.id));
-  const missing = districtIds.filter((id) => !existingIds.has(id));
-  if (missing.length > 0) {
-    return NextResponse.json({ message: "One or more districts do not exist." }, { status: 400 });
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.agronomistDistrict.deleteMany({ where: { agronomistId: userId } });
-    if (districtIds.length > 0) {
-      await tx.agronomistDistrict.createMany({
-        data: districtIds.map((districtId) => ({ agronomistId: userId, districtId })),
-      });
+  try {
+    // 1. Verify user belongs to same organization
+    const targetUser = await prisma.user.findFirst({
+      where: { id: userId, organizationId }
+    });
+    if (!targetUser) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
-  });
 
-  await logAudit({
-    action: "AGRONOMIST_ASSIGNMENTS_UPDATED",
-    userId: auth.user.id,
-    details: { agronomistId: userId, districtIds },
-    ip,
-    userAgent,
-    status: "SUCCESS",
-  });
+    // 2. Perform replacement in transaction
+    await prisma.$transaction([
+      // Delete old assignments
+      prisma.agronomistDistrict.deleteMany({
+        where: { agronomistId: userId, organizationId }
+      }),
+      // Create new assignments
+      prisma.agronomistDistrict.createMany({
+        data: parsed.data.districtIds.map(districtId => ({
+          agronomistId: userId,
+          districtId,
+          organizationId
+        }))
+      })
+    ]);
 
-  return NextResponse.json({ ok: true, districtIds });
+    await logAudit({
+      action: "AGRONOMIST_ASSIGNMENTS_UPDATED",
+      userId: auth.user.id,
+      organizationId,
+      details: { 
+        targetUserId: userId,
+        districtCount: parsed.data.districtIds.length
+      },
+      ip: request.headers.get("x-forwarded-for") || "127.0.0.1",
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update district assignments:", error);
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+  }
 }

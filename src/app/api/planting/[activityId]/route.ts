@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ activityId: string }>;
@@ -28,11 +29,11 @@ const updatePlantingSchema = z.object({
   photosUploaded: z.any().optional().nullable(),
 });
 
-async function getAuthorizedActivity(authUser: { id: string; roles: string[] }, id: string) {
-  const whereClause: any = { id };
+async function getAuthorizedActivity(authUser: { id: string; roles: string[]; organizationId: string }, id: string) {
+  const whereClause: any = { id, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -55,8 +56,12 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const activity = await getAuthorizedActivity(auth.user, activityId);
+  const activity = await getAuthorizedActivity(actor, activityId);
   if (!activity) {
     return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
   }
@@ -70,8 +75,12 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const existing = await getAuthorizedActivity(auth.user, activityId);
+  const existing = await getAuthorizedActivity(actor, activityId);
   if (!existing) {
     return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
   }
@@ -89,8 +98,8 @@ export async function PUT(request: Request, context: RouteContext) {
   const prevProductionRecordId = existing.productionRecordId;
 
   if (data.productionRecordId) {
-    const pr = await prisma.productionRecord.findUnique({
-      where: { id: data.productionRecordId },
+    const pr = await prisma.productionRecord.findFirst({
+      where: { id: data.productionRecordId, organizationId },
       select: { id: true, farmerId: true, plotId: true },
     });
     if (!pr) return NextResponse.json({ message: "Production record not found." }, { status: 404 });
@@ -102,8 +111,8 @@ export async function PUT(request: Request, context: RouteContext) {
     }
   }
   const updated = await prisma.$transaction(async (tx) => {
-    const next = await tx.plantingActivity.update({
-      where: { id: activityId },
+    const updateResult = await tx.plantingActivity.updateMany({
+      where: { id: activityId, organizationId },
       data: {
         productionRecordId: data.productionRecordId ?? undefined,
         cropType: data.cropType ?? undefined,
@@ -119,18 +128,30 @@ export async function PUT(request: Request, context: RouteContext) {
       },
     });
 
+    if (updateResult.count !== 1) {
+      throw new Error("Activity not found or unauthorized.");
+    }
+
+    const next = await tx.plantingActivity.findFirst({
+      where: { id: activityId, organizationId },
+    });
+
+    if (!next) {
+      throw new Error("Activity not found or unauthorized.");
+    }
+
     const ids = new Set<string>();
     if (prevProductionRecordId) ids.add(prevProductionRecordId);
     if (next.productionRecordId) ids.add(next.productionRecordId);
 
     for (const id of ids) {
       const agg = await tx.plantingActivity.aggregate({
-        where: { productionRecordId: id },
+        where: { productionRecordId: id, organizationId },
         _min: { plantingDate: true },
       });
-      await tx.productionRecord.update({
-        where: { id },
-        data: { plantingDate: agg._min.plantingDate ?? null },
+      await tx.productionRecord.updateMany({
+        where: { id, organizationId },
+        data: { plantingDate: agg._min?.plantingDate ?? null },
       });
     }
 
@@ -146,22 +167,26 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const existing = await getAuthorizedActivity(auth.user, activityId);
+  const existing = await getAuthorizedActivity(actor, activityId);
   if (!existing) {
     return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.plantingActivity.delete({ where: { id: activityId } });
+    await tx.plantingActivity.deleteMany({ where: { id: activityId, organizationId } });
     if (existing.productionRecordId) {
       const agg = await tx.plantingActivity.aggregate({
-        where: { productionRecordId: existing.productionRecordId },
+        where: { productionRecordId: existing.productionRecordId, organizationId },
         _min: { plantingDate: true },
       });
-      await tx.productionRecord.update({
-        where: { id: existing.productionRecordId },
-        data: { plantingDate: agg._min.plantingDate ?? null },
+      await tx.productionRecord.updateMany({
+        where: { id: existing.productionRecordId, organizationId },
+        data: { plantingDate: agg._min?.plantingDate ?? null },
       });
     }
   });

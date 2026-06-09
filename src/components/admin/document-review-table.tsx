@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ExternalLink, Search } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 type DocStatus = "UPLOADED" | "MISSING" | "NEEDS_REVIEW" | "VERIFIED";
 
@@ -47,6 +48,9 @@ function statusBadge(status: DocStatus) {
 
 export function DocumentReviewTable({ initialDocuments }: { initialDocuments: DocumentRow[] }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => (orgBase ? `${orgBase}${href}` : href);
   const [rows, setRows] = useState<DocumentRow[]>(initialDocuments);
   const [statusFilter, setStatusFilter] = useState<"ALL" | DocStatus>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
@@ -149,7 +153,7 @@ export function DocumentReviewTable({ initialDocuments }: { initialDocuments: Do
                   <div className="text-xs text-muted-foreground font-medium mt-1 truncate">{r.name}</div>
                   <div className="flex items-center gap-3 mt-3">
                     <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
-                      <Link href={`/admin/farmers/${r.farmerId}`}>
+                      <Link href={withOrg(`/admin/farmers/${r.farmerId}`)}>
                         Open farmer
                       </Link>
                     </Button>
@@ -187,4 +191,3 @@ export function DocumentReviewTable({ initialDocuments }: { initialDocuments: Do
     </Card>
   );
 }
-

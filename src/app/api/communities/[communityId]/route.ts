@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ communityId: string }>;
@@ -21,6 +22,7 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
   const { communityId } = await context.params;
   const payload = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(payload);
@@ -29,7 +31,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const community = await prisma.community.update({
-    where: { id: communityId },
+    where: { id: communityId, organizationId },
     data: {
       name: parsed.data.name.trim(),
       districtId: parsed.data.districtId,
@@ -49,14 +51,18 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
   const { communityId } = await context.params;
 
-  const farmerCount = await prisma.farmer.count({ where: { communityId } });
+  const farmerCount = await prisma.farmer.count({ 
+    where: { communityId, organizationId } 
+  });
   if (farmerCount > 0) {
     return NextResponse.json({ message: "Cannot delete community with linked farmers." }, { status: 400 });
   }
 
-  await prisma.community.delete({ where: { id: communityId } });
+  await prisma.community.delete({ 
+    where: { id: communityId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

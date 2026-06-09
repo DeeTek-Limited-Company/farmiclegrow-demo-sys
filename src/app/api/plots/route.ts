@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const createPlotSchema = z.object({
   farmerId: z.string().cuid(),
@@ -24,17 +25,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(request.url);
   const farmerId = url.searchParams.get("farmerId");
 
-  const whereClause: any = {};
+  const whereClause: any = {
+    organizationId,
+  };
   if (farmerId) {
     whereClause.farmerId = farmerId;
   }
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: actor.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -63,6 +72,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const payload = await request.json().catch(() => null);
   const parsed = createPlotSchema.safeParse(payload);
   if (!parsed.success) {
@@ -74,15 +86,19 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: actor.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     const allowed = await prisma.farmer.findFirst({
       where: {
         id: data.farmerId,
+        organizationId,
         community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } },
       },
       select: { id: true },
@@ -94,6 +110,7 @@ export async function POST(request: Request) {
 
   const plot = await prisma.farmPlot.create({
     data: {
+      organizationId,
       farmerId: data.farmerId,
       plotName: data.plotName || null,
       gpsPolygon: data.gpsPolygon ?? null,
@@ -111,4 +128,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ plot }, { status: 201 });
 }
-

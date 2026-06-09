@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ activityId: string }>;
@@ -29,11 +30,11 @@ const updateSchema = z.object({
   notes: z.string().trim().min(1).optional().nullable(),
 });
 
-async function getAuthorizedActivity(authUser: { id: string; roles: string[] }, id: string) {
-  const whereClause: any = { id };
+async function getAuthorizedActivity(authUser: { id: string; roles: string[]; organizationId: string }, id: string) {
+  const whereClause: any = { id, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -54,8 +55,12 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const activity = await getAuthorizedActivity(auth.user, activityId);
+  const activity = await getAuthorizedActivity(actor, activityId);
   if (!activity) return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
 
   return NextResponse.json({ activity });
@@ -65,8 +70,12 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const existing = await getAuthorizedActivity(auth.user, activityId);
+  const existing = await getAuthorizedActivity(actor, activityId);
   if (!existing) return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
 
   const payload = await request.json().catch(() => null);
@@ -81,8 +90,8 @@ export async function PUT(request: Request, context: RouteContext) {
   const data = parsed.data;
 
   if (data.productionRecordId) {
-    const pr = await prisma.productionRecord.findUnique({
-      where: { id: data.productionRecordId },
+    const pr = await prisma.productionRecord.findFirst({
+      where: { id: data.productionRecordId, organizationId },
       select: { id: true, farmerId: true, plotId: true },
     });
     if (!pr) return NextResponse.json({ message: "Production record not found." }, { status: 404 });
@@ -94,8 +103,8 @@ export async function PUT(request: Request, context: RouteContext) {
     }
   }
 
-  const updated = await prisma.fieldActivity.update({
-    where: { id: activityId },
+  const updateResult = await prisma.fieldActivity.updateMany({
+    where: { id: activityId, organizationId },
     data: {
       productionRecordId: data.productionRecordId ?? undefined,
       activityType: data.activityType ?? undefined,
@@ -112,6 +121,18 @@ export async function PUT(request: Request, context: RouteContext) {
     },
   });
 
+  if (updateResult.count !== 1) {
+    return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
+  }
+
+  const updated = await prisma.fieldActivity.findFirst({
+    where: { id: activityId, organizationId },
+  });
+
+  if (!updated) {
+    return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
+  }
+
   return NextResponse.json({ activity: updated });
 }
 
@@ -119,11 +140,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { activityId } = await context.params;
-  const existing = await getAuthorizedActivity(auth.user, activityId);
+  const existing = await getAuthorizedActivity(actor, activityId);
   if (!existing) return NextResponse.json({ message: "Activity not found or unauthorized." }, { status: 404 });
 
-  await prisma.fieldActivity.delete({ where: { id: activityId } });
+  await prisma.fieldActivity.deleteMany({ where: { id: activityId, organizationId } });
   return NextResponse.json({ ok: true });
 }
-

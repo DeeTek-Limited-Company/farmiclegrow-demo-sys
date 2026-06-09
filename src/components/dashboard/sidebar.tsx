@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   LayoutDashboard,
+  Crown,
+  Building2,
   Users,
   CheckCircle,
   Settings,
@@ -26,7 +28,8 @@ import {
   Handshake,
   ShoppingCart,
   MessageSquare,
-  Search
+  Search,
+  History
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -52,10 +55,66 @@ export function Sidebar({
   isMobile?: boolean;
 }) {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => {
+    if (href.startsWith('/super-admin')) {
+      return href;
+    }
+    return orgBase ? `${orgBase}${href}` : href;
+  };
 
   const getNavGroups = (): NavGroup[] => {
     switch (userRole) {
+      case 'super_admin':
+        return [
+          {
+            group: 'Platform',
+            items: [
+              { name: 'Dashboard', href: '/super-admin', icon: <LayoutDashboard className="w-5 h-5" /> },
+              { name: 'Organizations', href: '/super-admin/organizations', icon: <Building2 className="w-5 h-5" /> },
+              { name: 'Tenant Admins', href: '/super-admin/org-admins', icon: <ShieldCheck className="w-5 h-5" /> },
+              { name: 'Global Users', href: '/super-admin/users', icon: <Users className="w-5 h-5" /> },
+            ]
+          },
+          {
+            group: 'Traceability',
+            items: [
+              { name: 'Global Batches', href: '/super-admin/traceability', icon: <Package className="w-5 h-5" /> },
+              { name: 'QR Monitoring', href: '/super-admin/traceability/qr', icon: <Search className="w-5 h-5" /> },
+            ]
+          },
+          {
+            group: 'Governance',
+            items: [
+              { name: 'Compliance', href: '/super-admin/compliance', icon: <CheckCircle className="w-5 h-5" /> },
+              { name: 'Audit Logs', href: '/super-admin/audit-logs', icon: <History className="w-5 h-5" /> },
+              { name: 'Security Center', href: '/super-admin/security', icon: <ShieldCheck className="w-5 h-5" /> },
+            ]
+          },
+          {
+            group: 'Intelligence',
+            items: [
+              { name: 'Analytics', href: '/super-admin/analytics', icon: <TrendingUp className="w-5 h-5" /> },
+              { name: 'Export Center', href: '/super-admin/exports', icon: <FileText className="w-5 h-5" /> },
+            ]
+          },
+          {
+            group: 'Commercial',
+            items: [
+              { name: 'Billing', href: '/super-admin/billing', icon: <ShoppingCart className="w-5 h-5" /> },
+              { name: 'Subscriptions', href: '/super-admin/billing/plans', icon: <PlusCircle className="w-5 h-5" /> },
+            ]
+          },
+          {
+            group: 'System',
+            items: [
+              { name: 'Support', href: '/super-admin/support', icon: <MessageSquare className="w-5 h-5" /> },
+              { name: 'Notifications', href: '/super-admin/notifications', icon: <Bell className="w-5 h-5" /> },
+              { name: 'Settings', href: '/super-admin/settings', icon: <Settings className="w-5 h-5" /> },
+            ]
+          }
+        ];
       case 'admin':
         return [
           {
@@ -164,21 +223,30 @@ export function Sidebar({
             group: 'Buyer Hub',
             items: [
               { name: 'Dashboard', href: '/buyer', icon: <LayoutDashboard className="w-5 h-5" /> },
+            ],
+          },
+          {
+            group: 'Sourcing',
+            items: [
               { name: 'Marketplace', href: '/buyer/marketplace', icon: <ShoppingCart className="w-5 h-5" /> },
-              { name: 'Orders', href: '/buyer/orders', icon: <Package className="w-5 h-5" /> },
+              { name: 'RFQs & Bids', href: '/buyer/rfqs', icon: <FileText className="w-5 h-5" /> },
               { name: 'Trace Lookup', href: '/trace', icon: <Search className="w-5 h-5" /> },
             ],
           },
           {
-            group: 'Messages',
+            group: 'Management',
             items: [
-              { name: 'Chat', href: '/buyer/chat', icon: <MessageSquare className="w-5 h-5" /> },
+              { name: 'My Orders', href: '/buyer/orders', icon: <Package className="w-5 h-5" /> },
+              { name: 'Chat Hub', href: '/buyer/chat', icon: <MessageSquare className="w-5 h-5" /> },
               { name: 'Notifications', href: '/buyer/notifications', icon: <Bell className="w-5 h-5" /> },
             ],
           },
           {
-            group: 'Account',
-            items: [{ name: 'Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> }],
+            group: 'Profile',
+            items: [
+              { name: 'Business Profile', href: '/buyer/profile', icon: <User className="w-5 h-5" /> },
+              { name: 'Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> }
+            ],
           },
         ];
       case 'farmer':
@@ -209,13 +277,13 @@ export function Sidebar({
     }
   };
 
-  const groups = getNavGroups();
+  const groups = getNavGroups().map((group) => ({
+    ...group,
+    items: group.items.map((item) => ({ ...item, href: withOrg(item.href) })),
+  }));
 
   const isActive = (href: string) => {
-    if (href === '/agronomist' || href === '/admin' || href === '/farmer' || href === '/buyer') {
-      return pathname === href;
-    }
-    return pathname.startsWith(href);
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   return (

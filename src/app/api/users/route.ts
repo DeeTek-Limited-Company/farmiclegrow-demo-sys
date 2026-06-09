@@ -5,6 +5,8 @@ import { requireApiRole } from "@/lib/auth/guards";
 import { hashPassword } from "@/lib/auth/password";
 import { passwordSchema } from "@/lib/validations/auth";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { checkPlanLimit } from "@/lib/billing/limits";
 
 const userSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
@@ -21,6 +23,8 @@ export async function POST(req: Request) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const organizationId = requireOrgScope(auth.user);
 
   const body = await req.json().catch(() => null);
   const result = userSchema.safeParse(body);
@@ -47,6 +51,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "User with this email already exists" }, { status: 409 });
   }
 
+  const limitCheck = await checkPlanLimit(organizationId, "users");
+  if (!limitCheck.ok) {
+    await logAudit({
+      action: "BILLING_LIMIT_BLOCKED",
+      organizationId,
+      userId: auth.user.id,
+      details: { resource: "users", reason: limitCheck.reason, current: (limitCheck as any).current, limit: (limitCheck as any).limit },
+      ip,
+      userAgent,
+      status: "FAILURE",
+    });
+    return NextResponse.json({ message: "User limit reached for this subscription plan." }, { status: 403 });
+  }
+
   const passwordHash = await hashPassword(password);
 
   const newUser = await prisma.$transaction(async (tx) => {
@@ -57,6 +75,7 @@ export async function POST(req: Request) {
         passwordHash,
         isActive: true,
         mustChangePassword: true,
+        organizationId,
       },
     });
 
@@ -72,6 +91,7 @@ export async function POST(req: Request) {
 
   await logAudit({
     action: "USER_CREATED",
+    organizationId,
     userId: auth.user.id,
     details: { createdUserId: newUser.id, email: newUser.email, role: roleKey },
     ip,

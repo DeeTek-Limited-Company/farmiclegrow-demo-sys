@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const decisionSchema = z.object({
   action: z.enum(["APPROVED", "REJECTED"]),
@@ -19,6 +20,8 @@ export async function POST(request: Request, context: RouteContext) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const organizationId = requireOrgScope(auth.user);
 
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
@@ -36,8 +39,8 @@ export async function POST(request: Request, context: RouteContext) {
   const decision = parsed.data;
   const decisionNote = decision.reason?.trim();
 
-  const submission = await prisma.farmerSubmission.findUnique({
-    where: { id: submissionId },
+  const submission = await prisma.farmerSubmission.findFirst({
+    where: { id: submissionId, organizationId },
     include: {
       farmer: true,
       submittedBy: true,
@@ -62,8 +65,8 @@ export async function POST(request: Request, context: RouteContext) {
   const approved = decision.action === "APPROVED";
 
   await prisma.$transaction(async (tx) => {
-    await tx.farmerSubmission.update({
-      where: { id: submissionId },
+    await tx.farmerSubmission.updateMany({
+      where: { id: submissionId, organizationId: submission.organizationId },
       data: {
         status: decision.action,
         rejectionReason: approved ? null : decisionNote ?? null,
@@ -73,6 +76,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     await tx.approvalAction.create({
       data: {
+        organizationId: submission.organizationId,
         submissionId,
         actorUserId: auth.user.id,
         action: decision.action,
@@ -88,6 +92,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     await tx.notification.create({
       data: {
+        organizationId: submission.organizationId,
         userId: submission.submittedById,
         type: approved ? "SUBMISSION_APPROVED" : "SUBMISSION_REJECTED",
         title: approved ? "Submission approved" : "Submission rejected",
@@ -112,6 +117,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const farmerUsers = await tx.user.findMany({
       where: {
+        organizationId: submission.organizationId,
         userRoles: { some: { role: { key: "farmer" } } },
         OR: farmerLinkCandidates,
       },
@@ -121,6 +127,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (farmerUsers.length > 0) {
       await tx.notification.createMany({
         data: farmerUsers.map((item) => ({
+          organizationId: submission.organizationId,
           userId: item.id,
           type: approved ? "SUBMISSION_APPROVED" : "SUBMISSION_REJECTED",
           title: approved ? "Your onboarding was approved" : "Your onboarding was rejected",
@@ -140,6 +147,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   await logAudit({
     action: "SUBMISSION_DECIDED",
+    organizationId,
     userId: auth.user.id,
     details: {
       submissionId,

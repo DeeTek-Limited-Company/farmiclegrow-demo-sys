@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { cursorFindManyArgs, parseCursorPageParams, toCursorPage } from "@/lib/pagination/cursor";
 
 const createSchema = z.object({
   batchId: z.string().min(1),
@@ -15,6 +17,7 @@ const createSchema = z.object({
 export async function POST(request: Request) {
   const auth = await requireApiRole(["buyer", "admin", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
+  const organizationId = requireOrgScope(auth.user);
 
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
@@ -29,13 +32,13 @@ export async function POST(request: Request) {
 
   // Verify batch exists
   const batch = await prisma.batch.findUnique({
-    where: { id: data.batchId },
+    where: { id: data.batchId, organizationId },
   });
   if (!batch) return NextResponse.json({ message: "Batch not found." }, { status: 404 });
 
   // Generate order number: ORD-YYYYMMDD-XXXX
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const count = await prisma.order.count();
+  const count = await prisma.order.count({ where: { organizationId } });
   const orderNumber = `ORD-${dateStr}-${(count + 1).toString().padStart(3, "0")}`;
 
   const totalPrice = Number(data.quantity) * Number(data.pricePerUnit || 0);
@@ -43,6 +46,7 @@ export async function POST(request: Request) {
   try {
     const order = await prisma.order.create({
       data: {
+        organizationId: batch.organizationId,
         orderNumber,
         buyerId: auth.user.id,
         status: "PENDING",
@@ -51,6 +55,7 @@ export async function POST(request: Request) {
         notes: data.notes,
         items: {
           create: {
+            organizationId: batch.organizationId,
             batchId: data.batchId,
             quantity: data.quantity,
             unit: data.unit,
@@ -78,12 +83,14 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const auth = await requireApiRole(["buyer", "admin", "ops", "agronomist"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
+  const organizationId = requireOrgScope(auth.user);
+  const { limit, cursor } = parseCursorPageParams(request, { defaultLimit: 100, maxLimit: 500 });
 
   const url = new URL(request.url);
   const buyerId = url.searchParams.get("buyerId");
   const status = url.searchParams.get("status");
 
-  const whereClause: any = {};
+  const whereClause: any = { organizationId };
   
   // If buyer, only show their own orders
   if (auth.user.roles.includes("buyer") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
@@ -96,7 +103,7 @@ export async function GET(request: Request) {
     whereClause.status = status;
   }
 
-  const orders = await prisma.order.findMany({
+  const ordersWithExtra = await prisma.order.findMany({
     where: whereClause,
     include: {
       buyer: {
@@ -116,9 +123,10 @@ export async function GET(request: Request) {
         orderBy: { dispatchDate: "asc" }
       },
     },
-    orderBy: { createdAt: "desc" },
-    take: 500,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...cursorFindManyArgs({ limit, cursor }),
   });
 
-  return NextResponse.json({ orders });
+  const { page: orders, pageInfo } = toCursorPage(ordersWithExtra, limit);
+  return NextResponse.json({ orders, pageInfo });
 }

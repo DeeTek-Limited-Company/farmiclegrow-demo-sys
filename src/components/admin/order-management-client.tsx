@@ -34,6 +34,7 @@ import { apiFetch } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import { OrderChat } from "@/components/orders/order-chat";
 import Link from "next/link";
+import { buildOrgTracePath } from "@/lib/trace/urls";
 
 export function AdminOrderManagementClient({ 
   initialOrders,
@@ -368,7 +369,13 @@ export function AdminOrderManagementClient({
                               </div>
                               <div className="flex items-center gap-3">
                                 <Button asChild variant="outline" size="sm" className="rounded-xl border-emerald-100 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 transition-all font-bold text-[10px] uppercase tracking-widest h-8">
-                                  <Link href={`/trace/${item.batchId || item.batch?.batchId}?orderId=${order.id}`} target="_blank">
+                                  <Link
+                                    href={buildOrgTracePath(
+                                      item.batch?.organization?.slug || order.organization?.slug || "",
+                                      item.batchId || item.batch?.batchId,
+                                    )}
+                                    target="_blank"
+                                  >
                                     <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
                                     Quality Passport
                                   </Link>

@@ -6,6 +6,9 @@ import { hashPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { cursorFindManyArgs, parseCursorPageParams, toCursorPage } from "@/lib/pagination/cursor";
+import { checkPlanLimit } from "@/lib/billing/limits";
 
 const locationSchema = z.object({
   region: z.string().optional(),
@@ -175,15 +178,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(request.url);
   const minimal = url.searchParams.get("minimal") === "1";
-  const takeParam = url.searchParams.get("take");
-  const take = takeParam ? Math.max(1, Math.min(2000, Number(takeParam))) : 500;
+  const { limit, cursor } = parseCursorPageParams(request, {
+    defaultLimit: minimal ? 500 : 100,
+    maxLimit: minimal ? 2000 : 500,
+  });
 
-  const whereClause: any = {};
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  const whereClause: any = { organizationId };
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -199,7 +207,7 @@ export async function GET(request: Request) {
   }
 
   if (minimal) {
-    const farmers = await prisma.farmer.findMany({
+    const farmersWithExtra = await prisma.farmer.findMany({
       where: whereClause,
       select: {
         id: true,
@@ -218,14 +226,15 @@ export async function GET(request: Request) {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
-      take,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      ...cursorFindManyArgs({ limit, cursor }),
     });
 
-    return NextResponse.json({ farmers });
+    const { page: farmers, pageInfo } = toCursorPage(farmersWithExtra, limit);
+    return NextResponse.json({ farmers, pageInfo });
   }
 
-  const farmers = await prisma.farmer.findMany({
+  const farmersWithExtra = await prisma.farmer.findMany({
     where: whereClause,
     include: {
       community: { include: { district: { include: { region: true } } } },
@@ -238,10 +247,12 @@ export async function GET(request: Request) {
         take: 1,
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...cursorFindManyArgs({ limit, cursor }),
   });
 
-  return NextResponse.json({ farmers });
+  const { page: farmers, pageInfo } = toCursorPage(farmersWithExtra, limit);
+  return NextResponse.json({ farmers, pageInfo });
 }
 
 export async function POST(request: Request) {
@@ -249,6 +260,9 @@ export async function POST(request: Request) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
 
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
@@ -264,6 +278,34 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
+  const farmersLimit = await checkPlanLimit(organizationId, "farmers");
+  if (!farmersLimit.ok) {
+    await logAudit({
+      action: "BILLING_LIMIT_BLOCKED",
+      organizationId,
+      userId: actor.id,
+      details: { resource: "farmers", reason: farmersLimit.reason, current: (farmersLimit as any).current, limit: (farmersLimit as any).limit },
+      ip,
+      userAgent,
+      status: "FAILURE",
+    });
+    return NextResponse.json({ message: "Farmer limit reached for this subscription plan." }, { status: 403 });
+  }
+
+  const usersLimit = await checkPlanLimit(organizationId, "users");
+  if (!usersLimit.ok) {
+    await logAudit({
+      action: "BILLING_LIMIT_BLOCKED",
+      organizationId,
+      userId: actor.id,
+      details: { resource: "users", reason: usersLimit.reason, current: (usersLimit as any).current, limit: (usersLimit as any).limit },
+      ip,
+      userAgent,
+      status: "FAILURE",
+    });
+    return NextResponse.json({ message: "User limit reached for this subscription plan." }, { status: 403 });
+  }
+
   // Generate temporary password
   const tempPassword = randomBytes(6).toString("hex"); // 12 chars
   const passwordHash = await hashPassword(tempPassword);
@@ -271,8 +313,8 @@ export async function POST(request: Request) {
   try {
     const result = await prisma.$transaction(
       async (tx) => {
-      const community = await tx.community.findUnique({
-        where: { id: data.communityId },
+      const community = await tx.community.findFirst({
+        where: { id: data.communityId, organizationId },
         include: { district: { include: { region: true } } },
       });
       if (!community) {
@@ -282,9 +324,9 @@ export async function POST(request: Request) {
         throw new Error("COMMUNITY_MISMATCH");
       }
 
-      if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin")) {
+      if (actor.roles.includes("agronomist") && !actor.roles.includes("admin")) {
         const allowed = await tx.agronomistDistrict.findFirst({
-          where: { agronomistId: auth.user.id, districtId: community.districtId },
+          where: { agronomistId: actor.id, districtId: community.districtId, organizationId },
           select: { id: true },
         });
         if (!allowed) {
@@ -300,6 +342,7 @@ export async function POST(request: Request) {
       const normalizedEmail = toNormalizedEmail(data.email, data.phone);
       const user = await tx.user.create({
         data: {
+          organizationId,
           email: normalizedEmail,
           fullName: data.fullName,
           passwordHash,
@@ -316,6 +359,7 @@ export async function POST(request: Request) {
       const hectares = toHectares(data.farmSize, data.farmSizeUnit);
       const farmer = await tx.farmer.create({
         data: {
+          organizationId,
           externalRef: user.id,
           fullName: data.fullName,
           phone: data.phone || null,
@@ -329,6 +373,7 @@ export async function POST(request: Request) {
           secondaryCrops: data.crops.secondaryCrops ?? [],
           farmProfiles: {
             create: {
+              organizationId,
               farmName: data.farmName,
               farmType: data.farmType || null,
               farmSize: data.farmSize ?? null,
@@ -339,6 +384,7 @@ export async function POST(request: Request) {
               totalAreaHectare: hectares ?? null,
               locations: {
                 create: {
+                  organizationId,
                   latitude: data.location?.latitude ?? null,
                   longitude: data.location?.longitude ?? null,
                   region: community.district.region.name,
@@ -351,6 +397,7 @@ export async function POST(request: Request) {
           },
           certifications: data.certifications?.length ? {
             create: data.certifications.map(c => ({
+              organizationId,
               name: c.name,
               issuer: c.issuingBody || null,
               validTo: c.expiryDate ? new Date(c.expiryDate) : null,
@@ -369,8 +416,9 @@ export async function POST(request: Request) {
       const onboardingQuality = computeOnboardingQualityScore(data);
       const submission = await tx.farmerSubmission.create({
         data: {
+          organizationId,
           farmerId: farmer.id,
-          submittedById: auth.user.id,
+          submittedById: actor.id,
           status: "PENDING_REVIEW",
           dataQualityScore: onboardingQuality,
         },
@@ -378,13 +426,14 @@ export async function POST(request: Request) {
 
       // 5. Notify Admins
       const admins = await tx.userRole.findMany({
-        where: { role: { key: "admin" } },
+        where: { role: { key: "admin" }, user: { organizationId } },
         select: { userId: true },
       });
 
       if (admins.length > 0) {
         await tx.notification.createMany({
           data: admins.map((admin) => ({
+            organizationId,
             userId: admin.userId,
             type: "SUBMISSION_CREATED",
             title: "New farmer submission",
@@ -392,7 +441,7 @@ export async function POST(request: Request) {
             metadata: {
               farmerId: farmer.id,
               submissionId: submission.id,
-              submittedById: auth.user.id,
+              submittedById: actor.id,
             },
           })),
         });
@@ -414,7 +463,9 @@ export async function POST(request: Request) {
         documentsToCreate.push({ farmerId: farmer.id, type: "CERTIFICATION", name: `Certification: ${c.name}`, url: c.url, status: "UPLOADED" });
       }
       if (documentsToCreate.length > 0) {
-        await tx.document.createMany({ data: documentsToCreate });
+        await tx.document.createMany({
+          data: documentsToCreate.map((doc) => ({ ...doc, organizationId })),
+        });
       }
 
       return { farmer, submission, tempPassword, email: user.email };
@@ -431,7 +482,8 @@ export async function POST(request: Request) {
 
     await logAudit({
       action: "FARMER_CREATED",
-      userId: auth.user.id,
+      organizationId,
+      userId: actor.id,
       details: {
         farmerId: result.farmer.id,
         submissionId: result.submission.id,
@@ -452,7 +504,8 @@ export async function POST(request: Request) {
     if (docUrls.length > 0) {
       await logAudit({
         action: "DOCUMENT_REGISTERED",
-        userId: auth.user.id,
+        organizationId,
+        userId: actor.id,
         details: {
           farmerId: result.farmer.id,
           submissionId: result.submission.id,
@@ -470,7 +523,8 @@ export async function POST(request: Request) {
     console.error(error);
     await logAudit({
       action: "FARMER_CREATED",
-      userId: auth.user.id,
+      organizationId,
+      userId: actor.id,
       details: {
         error: error?.message || String(error),
         districtId: data.districtId,

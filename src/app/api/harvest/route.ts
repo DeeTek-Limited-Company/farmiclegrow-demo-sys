@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmpty(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -34,19 +35,21 @@ export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const url = new URL(request.url);
   const farmerId = url.searchParams.get("farmerId");
   const plotId = url.searchParams.get("plotId");
   const productionRecordId = url.searchParams.get("productionRecordId");
 
-  const whereClause: any = {};
+  const whereClause: any = { organizationId };
   if (farmerId) whereClause.farmerId = farmerId;
   if (plotId) whereClause.plotId = plotId;
   if (productionRecordId) whereClause.productionRecordId = productionRecordId;
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -72,6 +75,8 @@ export async function POST(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -83,8 +88,8 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  const plot = await prisma.farmPlot.findUnique({
-    where: { id: data.plotId },
+  const plot = await prisma.farmPlot.findFirst({
+    where: { id: data.plotId, organizationId },
     select: { id: true, farmerId: true, farmer: { select: { communityId: true } } },
   });
   if (!plot) return NextResponse.json({ message: "Plot not found." }, { status: 404 });
@@ -93,8 +98,8 @@ export async function POST(request: Request) {
   }
 
   if (data.productionRecordId) {
-    const pr = await prisma.productionRecord.findUnique({
-      where: { id: data.productionRecordId },
+    const pr = await prisma.productionRecord.findFirst({
+      where: { id: data.productionRecordId, organizationId },
       select: { id: true, farmerId: true, plotId: true, cropType: true, cropVariety: true },
     });
     if (!pr) return NextResponse.json({ message: "Production record not found." }, { status: 404 });
@@ -108,12 +113,15 @@ export async function POST(request: Request) {
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     const districtId = plot.farmer.communityId
-      ? (await prisma.community.findUnique({ where: { id: plot.farmer.communityId }, select: { districtId: true } }))?.districtId
+      ? (await prisma.community.findFirst({
+          where: { id: plot.farmer.communityId, organizationId },
+          select: { districtId: true },
+        }))?.districtId
       : null;
     if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "You are not assigned to this farmer's district." }, { status: 403 });
@@ -123,6 +131,7 @@ export async function POST(request: Request) {
   const created = await prisma.$transaction(async (tx) => {
     const harvest = await tx.harvestRecord.create({
       data: {
+        organizationId,
         plotId: data.plotId,
         farmerId: data.farmerId,
         productionRecordId: data.productionRecordId || null,
@@ -144,20 +153,21 @@ export async function POST(request: Request) {
 
     if (harvest.productionRecordId) {
       const agg = await tx.harvestRecord.aggregate({
-        where: { productionRecordId: harvest.productionRecordId },
+        where: { productionRecordId: harvest.productionRecordId, organizationId },
         _max: { harvestDate: true },
       });
+      const maxHarvestDate = agg._max?.harvestDate ?? null;
       try {
-        await tx.productionRecord.update({
-          where: { id: harvest.productionRecordId },
-          data: { actualHarvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id: harvest.productionRecordId, organizationId },
+          data: { actualHarvestDate: maxHarvestDate } as any,
         });
       } catch (err: any) {
         const msg = String(err?.message || "");
         if (!msg.includes("Unknown argument `actualHarvestDate`")) throw err;
-        await tx.productionRecord.update({
-          where: { id: harvest.productionRecordId },
-          data: { harvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id: harvest.productionRecordId, organizationId },
+          data: { harvestDate: maxHarvestDate } as any,
         });
       }
     }

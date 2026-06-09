@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmptyNumeric(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -44,6 +45,8 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(payload);
   if (!parsed.success) {
@@ -51,8 +54,8 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
   }
 
   try {
-    const existing = await prisma.productionRecord.findUnique({
-      where: { id },
+    const existing = await prisma.productionRecord.findFirst({
+      where: { id, organizationId },
     });
 
     if (!existing) {
@@ -61,13 +64,14 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
 
     if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
       const assignments = await prisma.agronomistDistrict.findMany({
-        where: { agronomistId: auth.user.id },
+        where: { agronomistId: auth.user.id, organizationId },
         select: { districtId: true },
       });
       const districtIds = assignments.map((a) => a.districtId);
       const isAssigned = await prisma.farmer.findFirst({
         where: {
           id: existing.farmerId,
+          organizationId,
           community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } },
         },
         select: { id: true },
@@ -82,8 +86,8 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
       if (plotId === null) {
         data.plotId = null;
       } else {
-        const plot = await prisma.farmPlot.findUnique({
-          where: { id: plotId },
+        const plot = await prisma.farmPlot.findFirst({
+          where: { id: plotId, organizationId },
           select: { id: true, farmerId: true },
         });
         if (!plot) {
@@ -112,9 +116,15 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
     const record = await prisma.$transaction(async (tx) => {
       let updated: any;
       try {
-        updated = await tx.productionRecord.update({
-          where: { id },
+        const updateResult = await tx.productionRecord.updateMany({
+          where: { id, organizationId },
           data: data as any,
+        });
+        if (updateResult.count !== 1) {
+          throw new Error("Record not found");
+        }
+        updated = await tx.productionRecord.findFirst({
+          where: { id, organizationId },
         });
       } catch (err: any) {
         const msg = String(err?.message || "");
@@ -124,26 +134,36 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
           delete (data as any).actualHarvestDate;
           (data as any).harvestDate = value;
         }
-        updated = await tx.productionRecord.update({
-          where: { id },
+        const updateResult = await tx.productionRecord.updateMany({
+          where: { id, organizationId },
           data: data as any,
         });
+        if (updateResult.count !== 1) {
+          throw new Error("Record not found");
+        }
+        updated = await tx.productionRecord.findFirst({
+          where: { id, organizationId },
+        });
+      }
+
+      if (!updated) {
+        throw new Error("Record not found");
       }
 
       await recomputeFarmerQualityScore(tx, existing.farmerId);
 
       if (data.status && previousStatus !== updated.status) {
-        const farmer = await tx.farmer.findUnique({
-          where: { id: existing.farmerId },
+        const farmer = await tx.farmer.findFirst({
+          where: { id: existing.farmerId, organizationId },
           select: { externalRef: true, fullName: true },
         });
 
         const adminIds = await tx.userRole.findMany({
-          where: { role: { key: "admin" } },
+          where: { role: { key: "admin" }, user: { organizationId } },
           select: { userId: true },
         });
         const opsIds = await tx.userRole.findMany({
-          where: { role: { key: "ops" } },
+          where: { role: { key: "ops" }, user: { organizationId } },
           select: { userId: true },
         });
 
@@ -155,6 +175,7 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
 
         await tx.notification.createMany({
           data: Array.from(recipients).map((userId) => ({
+            organizationId: updated.organizationId,
             userId,
             type: "SYSTEM",
             title: "Production cycle status updated",
@@ -186,8 +207,10 @@ export async function GET(request: Request, context: RouteCtx) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
-  const record = await prisma.productionRecord.findUnique({
-    where: { id },
+  const organizationId = requireOrgScope(auth.user);
+
+  const record = await prisma.productionRecord.findFirst({
+    where: { id, organizationId },
     include: {
       farmer: true,
       farmProfile: true,
@@ -199,14 +222,24 @@ export async function GET(request: Request, context: RouteCtx) {
     return NextResponse.json({ message: "Record not found" }, { status: 404 });
   }
 
+  if (auth.user.roles.includes("farmer")) {
+    if (record.farmer.externalRef !== auth.user.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+    }
+  }
+
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     const isAssigned = await prisma.farmer.findFirst({
-      where: { id: record.farmerId, community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } } },
+      where: {
+        id: record.farmerId,
+        organizationId,
+        community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } },
+      },
       select: { id: true },
     });
     if (!isAssigned) return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
@@ -230,9 +263,11 @@ export async function DELETE(request: Request, context: RouteCtx) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   try {
-    await prisma.productionRecord.delete({
-      where: { id },
+    await prisma.productionRecord.deleteMany({
+      where: { id, organizationId },
     });
     return NextResponse.json({ message: "Record deleted" });
   } catch (error) {

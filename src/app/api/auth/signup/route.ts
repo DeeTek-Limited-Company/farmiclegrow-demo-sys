@@ -13,6 +13,7 @@ const signupSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: passwordSchema,
+  orgSlug: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -41,6 +42,15 @@ export async function POST(request: Request) {
 
   const email = parsed.data.email.toLowerCase().trim();
   const fullName = parsed.data.fullName.trim();
+  const orgSlug = parsed.data.orgSlug?.toLowerCase().trim();
+
+  let organization = null;
+  if (orgSlug) {
+    organization = await prisma.organization.findUnique({ where: { slug: orgSlug } });
+    if (!organization || organization.status !== "ACTIVE") {
+      return NextResponse.json({ message: "Invalid organization." }, { status: 400 });
+    }
+  }
 
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
@@ -62,6 +72,7 @@ export async function POST(request: Request) {
         passwordHash,
         isActive: true,
         mustChangePassword: false,
+        organizationId: organization?.id || null,
       },
     });
 
@@ -75,6 +86,7 @@ export async function POST(request: Request) {
     const session = await tx.session.create({
       data: {
         userId: createdUser.id,
+        organizationId: organization?.id || null,
         expiresAt: new Date(Date.now() + authCookieOptions.maxAge * 1000),
         ip,
         userAgent: userAgent || null,
@@ -99,6 +111,9 @@ export async function POST(request: Request) {
     roles: ["buyer"],
     mustChangePassword: user.mustChangePassword,
     sessionId,
+    organizationId: organization?.id || null,
+    organizationSlug: organization?.slug || null,
+    organizationStatus: (organization?.status as any) || "ACTIVE",
   });
 
   const response = NextResponse.json(
@@ -109,6 +124,8 @@ export async function POST(request: Request) {
         email: user.email,
         name: user.fullName,
         roles: ["buyer"],
+        organizationId: organization?.id || null,
+        organizationSlug: organization?.slug || null,
       },
     },
     { status: 201 },

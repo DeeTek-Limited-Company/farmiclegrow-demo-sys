@@ -21,10 +21,24 @@ export function LoginForm({ callbackUrl = "/" }: LoginFormProps) {
     setLoading(true);
     setError("");
 
+    const orgSlug = typeof document !== "undefined"
+      ? document.cookie
+          .split(";")
+          .map((c) => c.trim())
+          .find((c) => c.startsWith("org_slug="))
+          ?.split("=")[1]
+      : undefined;
+
+    if (!orgSlug) {
+      setError("Organization context is missing. Please use /org/{orgSlug}.");
+      setLoading(false);
+      return;
+    }
+
     const response = await apiFetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, orgSlug }),
     });
 
     if (!response.ok) {

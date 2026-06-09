@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ movementId: string }>;
@@ -26,11 +27,11 @@ const updateSchema = z.object({
   conditionOnArrival: z.string().trim().min(1).optional().nullable(),
 });
 
-async function getAuthorizedMovement(authUser: { id: string; roles: string[] }, movementId: string) {
-  const whereClause: any = { id: movementId };
+async function getAuthorizedMovement(authUser: { id: string; roles: string[]; organizationId: string }, movementId: string) {
+  const whereClause: any = { id: movementId, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -53,8 +54,10 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { movementId } = await context.params;
-  const movement = await getAuthorizedMovement(auth.user, movementId);
+  const movement = await getAuthorizedMovement({ id: auth.user.id, roles: auth.user.roles, organizationId }, movementId);
   if (!movement) return NextResponse.json({ message: "Movement not found or unauthorized." }, { status: 404 });
 
   return NextResponse.json({ movement });
@@ -64,8 +67,10 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { movementId } = await context.params;
-  const existing = await getAuthorizedMovement(auth.user, movementId);
+  const existing = await getAuthorizedMovement({ id: auth.user.id, roles: auth.user.roles, organizationId }, movementId);
   if (!existing) return NextResponse.json({ message: "Movement not found or unauthorized." }, { status: 404 });
 
   const payload = await request.json().catch(() => null);
@@ -79,7 +84,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const data = parsed.data;
   const updated = await prisma.movementLog.update({
-    where: { id: movementId },
+    where: { id: movementId, organizationId },
     data: {
       fromLocation: data.fromLocation ?? undefined,
       toLocation: data.toLocation ?? undefined,
@@ -100,11 +105,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { movementId } = await context.params;
-  const existing = await getAuthorizedMovement(auth.user, movementId);
+  const existing = await getAuthorizedMovement({ id: auth.user.id, roles: auth.user.roles, organizationId }, movementId);
   if (!existing) return NextResponse.json({ message: "Movement not found or unauthorized." }, { status: 404 });
 
-  await prisma.movementLog.delete({ where: { id: movementId } });
+  await prisma.movementLog.delete({ 
+    where: { id: movementId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

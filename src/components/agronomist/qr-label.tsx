@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Printer, QrCode, Download, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import { buildOrgTraceUrl } from "@/lib/trace/urls";
 
 interface QRLabelProps {
   batch: {
@@ -20,13 +21,19 @@ interface QRLabelProps {
     quantity: number | string;
     harvestDate: Date | string;
     farmerName: string;
+    orgSlug: string;
   };
 }
 
 export function QRLabel({ batch }: QRLabelProps) {
   const printRef = useRef<HTMLDivElement>(null);
-
-  const traceUrl = `https://farmiclegrow.com/trace/${batch.batchId}`;
+  const traceUrl = buildOrgTraceUrl({
+    orgSlug: batch.orgSlug,
+    batchId: batch.batchId,
+    configuredUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    nodeEnv: process.env.NODE_ENV,
+    windowOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+  });
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -75,7 +82,7 @@ export function QRLabel({ batch }: QRLabelProps) {
               <strong>Harvested:</strong> ${format(new Date(batch.harvestDate), "PPP")}
             </div>
             <div class="footer">
-              Scan to verify traceability journey at farmiclegrow.com
+              Scan to verify this organization's trace page
             </div>
           </div>
           <script>
@@ -119,8 +126,8 @@ export function QRLabel({ batch }: QRLabelProps) {
               <QrCode className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <DialogTitle className="text-2xl font-black">QR Label</DialogTitle>
-              <p className="text-slate-400 text-sm font-medium">Verify & print traceability tag</p>
+              <DialogTitle className="text-2xl font-black">Public QR Label</DialogTitle>
+              <p className="text-slate-400 text-sm font-medium">Print the website QR for external packaging</p>
             </div>
           </div>
         </div>
@@ -181,7 +188,7 @@ export function QRLabel({ batch }: QRLabelProps) {
               rel="noopener noreferrer"
               className="text-xs font-black text-primary hover:underline flex items-center gap-1 uppercase tracking-widest"
             >
-              Preview Trace Page
+              Preview Public Trace Page
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>

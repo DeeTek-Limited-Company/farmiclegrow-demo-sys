@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ documentId: string }>;
@@ -19,6 +20,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const payload = await request.json().catch(() => null);
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
@@ -26,14 +30,16 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { documentId } = await context.params;
-  const doc = await prisma.document.findUnique({ where: { id: documentId } });
+  const doc = await prisma.document.findUnique({ 
+    where: { id: documentId, organizationId } 
+  });
   if (!doc) {
     return NextResponse.json({ message: "Document not found" }, { status: 404 });
   }
 
   const updated = await prisma.$transaction(async (tx) => {
     const updatedDoc = await tx.document.update({
-      where: { id: documentId },
+      where: { id: documentId, organizationId },
       data: { status: parsed.data.status },
     });
 
@@ -48,7 +54,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const userAgent = request.headers.get("user-agent") || undefined;
   await logAudit({
     action: "DOCUMENT_STATUS_UPDATED",
-    userId: auth.user.id,
+    userId: actor.id,
     details: { documentId: updated.id, farmerId: updated.farmerId, status: updated.status },
     ip,
     userAgent,

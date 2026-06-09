@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { APP_ROLES, type AppRole } from "@/lib/auth/constants";
-import { AUTH_COOKIE_NAME, authCookieOptions, createSessionToken } from "@/lib/auth/session";
+import { 
+  AUTH_COOKIE_NAME, 
+  authCookieOptions, 
+  createSessionToken,
+  createMfaChallengeToken 
+} from "@/lib/auth/session";
 import { verifyPassword } from "@/lib/auth/password";
 import { rateLimiter } from "@/lib/security/rate-limit";
 import { loginSchema } from "@/lib/validations/auth";
@@ -57,6 +62,9 @@ export async function POST(request: Request) {
     }
 
     const email = parsed.data.email.toLowerCase().trim();
+    const orgSlug = parsed.data.orgSlug?.toLowerCase().trim();
+
+    // 1. Find the user first
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
@@ -65,6 +73,7 @@ export async function POST(request: Request) {
             role: true,
           },
         },
+        organization: true,
       },
     });
 
@@ -77,19 +86,43 @@ export async function POST(request: Request) {
         userAgent: request.headers.get("user-agent") || undefined,
         status: "FAILURE",
       });
-      return NextResponse.json({ message: "Your account does not exist or you are not onboarded yet." }, { status: 401 });
+      return NextResponse.json({ 
+        message: "Your account does not exist or you are not onboarded yet.",
+      }, { status: 401 });
+    }
+
+    const roles = user.userRoles
+      .map((item) => item.role.key)
+      .filter((key): key is AppRole => APP_ROLES.includes(key as AppRole));
+
+    const isSuperAdmin = roles.includes("super_admin");
+    const isBuyer = roles.includes("buyer");
+
+    // 2. Handle organization context
+    let organization = user.organization;
+
+    if (orgSlug) {
+      // If a slug was provided, ensure it matches the user's org or they are super admin
+      if (!isSuperAdmin && organization && organization.slug !== orgSlug) {
+        return NextResponse.json({ 
+          message: `Your account is not registered with this organization.`,
+        }, { status: 401 });
+      }
+      
+      // If user is a global buyer but trying to log in via an org slug
+      if (isBuyer && !organization && orgSlug) {
+         // This is fine, but we should find the org to check if it's active
+         organization = await prisma.organization.findUnique({ where: { slug: orgSlug } });
+      }
+    }
+
+    // If an organization is involved, ensure it's active
+    if (organization && organization.status !== "ACTIVE" && organization.status !== "TRIAL") {
+      return NextResponse.json({ message: "Organization is inactive." }, { status: 401 });
     }
 
     if (user.lockUntil && user.lockUntil > new Date()) {
       const remainingTime = Math.ceil((user.lockUntil.getTime() - Date.now()) / 1000 / 60);
-      await logAudit({
-        action: "USER_LOGIN_FAILED",
-        userId: user.id,
-        details: { email, reason: "Account locked" },
-        ip,
-        userAgent: request.headers.get("user-agent") || undefined,
-        status: "FAILURE",
-      });
       return NextResponse.json(
         { message: `Your account is temporarily locked. Please try again in ${remainingTime} minutes.` },
         { status: 403 }
@@ -151,17 +184,27 @@ export async function POST(request: Request) {
       userAgent: request.headers.get("user-agent") || undefined,
     });
 
-    const roles = user.userRoles
-      .map((item) => item.role.key)
-      .filter((key): key is AppRole => APP_ROLES.includes(key as AppRole));
-
     if (roles.length === 0) {
       return NextResponse.json({ message: "No role assigned to this account." }, { status: 403 });
+    }
+
+    if (user.mfaEnabled) {
+      const mfaToken = await createMfaChallengeToken({
+        userId: user.id,
+        organizationId: organization?.id || null,
+      });
+
+      return NextResponse.json({
+        message: "MFA required.",
+        mfaRequired: true,
+        mfaToken,
+      });
     }
 
     const session = await prisma.session.create({
       data: {
         userId: user.id,
+        organizationId: user.organizationId,
         expiresAt: new Date(Date.now() + authCookieOptions.maxAge * 1000),
         ip,
         userAgent: request.headers.get("user-agent") || null,
@@ -175,6 +218,9 @@ export async function POST(request: Request) {
       roles,
       mustChangePassword: user.mustChangePassword,
       sessionId: session.id,
+      organizationId: organization?.id || null,
+      organizationSlug: organization?.slug || null,
+      organizationStatus: (organization?.status as any) || "ACTIVE",
     });
 
     const response = NextResponse.json({
@@ -184,24 +230,25 @@ export async function POST(request: Request) {
         email: user.email,
         name: user.fullName,
         roles,
+        organizationId: organization?.id || null,
+        organizationSlug: organization?.slug || null,
       },
     });
 
     response.cookies.set(AUTH_COOKIE_NAME, token, authCookieOptions);
+    
+    if (organization?.slug) {
+      response.cookies.set("org_slug", organization.slug, {
+        httpOnly: false,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+      });
+    }
+
     return response;
-  } catch (error) {
-    console.error("AUTH_LOGIN_ERROR", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    let code = "AUTH_LOGIN_FAILED";
-    if (errorMessage.includes("AUTH_SECRET is not configured")) code = "AUTH_SECRET_MISSING";
-    else if (errorMessage.includes("DATABASE_URL is not set")) code = "DATABASE_URL_MISSING";
-    else if (errorMessage.includes("Can't reach database server")) code = "DB_UNREACHABLE";
-    else if (errorMessage.toLowerCase().includes("tls")) code = "DB_TLS_ERROR";
-
-    const message =
-      process.env.NODE_ENV === "production" ? "Login failed. Please try again." : `Login failed: ${errorMessage}`;
-
-    return NextResponse.json({ message, code }, { status: 500 });
+  } catch (error: any) {
+    console.error("Login error:", error);
+    return NextResponse.json({ message: "An unexpected error occurred." }, { status: 500 });
   }
 }

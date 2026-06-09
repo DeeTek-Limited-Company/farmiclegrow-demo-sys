@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { getClientIp, publicOptions, publicRateLimited, withPublicCors } from "@/lib/public/http";
 
-function withCors(response: NextResponse) {
-  response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-  return response;
+export async function OPTIONS(request: Request) {
+  return publicOptions(request);
 }
 
-export async function OPTIONS() {
-  return withCors(new NextResponse(null, { status: 204 }));
-}
+export async function GET(request: Request) {
+  const ip = getClientIp(request);
+  const { success, remaining, reset } = rateLimit(`pub-impact-${ip}`, 30, 60000);
 
-export async function GET() {
+  if (!success) {
+    return publicRateLimited(request, { limit: 30, remaining, reset });
+  }
+
   const [farmers, batches, regions, communities, salesCount, salesAgg, latestBatch] = await Promise.all([
     prisma.farmer.count(),
     prisma.batch.count(),
@@ -31,7 +33,8 @@ export async function GET() {
   const quantitySold = salesAgg._sum.quantitySold ? Number(salesAgg._sum.quantitySold) : 0;
   const totalValue = salesAgg._sum.totalValue ? Number(salesAgg._sum.totalValue) : 0;
 
-  return withCors(
+  return withPublicCors(
+    request,
     NextResponse.json({
       kpis: {
         farmers,
@@ -43,7 +46,7 @@ export async function GET() {
         totalValue,
       },
       sampleTraceCode: latestBatch?.batchId ?? null,
-    })
+    }),
   );
 }
 

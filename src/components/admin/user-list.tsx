@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Shield, User, Mail, Calendar, Power, MoreHorizontal, Pencil, MapPin, Building2, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EditUserModal } from "./edit-user-modal";
+import { DistrictAssignmentModal } from "./district-assignment-modal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,12 @@ type UserWithRoles = {
       key: string;
     }
   }>;
+  agronomistDistricts: Array<{
+    district: {
+      id: string;
+      name: string;
+    }
+  }>;
   buyerProfile?: {
     companyName: string;
     phoneNumber: string | null;
@@ -37,7 +44,10 @@ type UserWithRoles = {
   } | null;
 };
 
-export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
+export function UserList({ initialUsers, allDistricts }: { 
+  initialUsers: UserWithRoles[], 
+  allDistricts: Array<{ id: string, name: string }> 
+}) {
   const [users, setUsers] = useState(initialUsers);
   const router = useRouter();
   
@@ -48,6 +58,9 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
     roleKey: string;
   } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const [distAssignUser, setDistAssignUser] = useState<{ id: string; fullName: string } | null>(null);
+  const [isDistModalOpen, setIsDistModalOpen] = useState(false);
 
   async function toggleStatus(userId: string, currentStatus: boolean) {
     const response = await apiFetch(`/api/users/${userId}/status`, {
@@ -72,6 +85,7 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
         <TableHeader className="bg-muted/50">
           <TableRow>
             <TableHead className="w-[250px]">User</TableHead>
+            <TableHead>Districts</TableHead>
             <TableHead>Roles</TableHead>
             <TableHead>Business Details</TableHead>
             <TableHead>Joined</TableHead>
@@ -94,6 +108,23 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
                       <Mail className="w-3 h-3" /> {user.email}
                     </span>
                   </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap gap-1 max-w-[150px]">
+                  {user.userRoles.some(ur => ur.role.key === "agronomist") ? (
+                    user.agronomistDistricts.length > 0 ? (
+                      user.agronomistDistricts.map(ad => (
+                        <Badge key={ad.district.id} variant="outline" className="text-[10px] font-bold bg-slate-50">
+                          {ad.district.name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-amber-600 font-bold italic">No districts assigned</span>
+                    )
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">Not applicable</span>
+                  )}
                 </div>
               </TableCell>
               <TableCell>
@@ -168,6 +199,18 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
                       <Pencil className="mr-2 h-4 w-4" />
                       <span>Edit User</span>
                     </DropdownMenuItem>
+                    {user.userRoles.some(ur => ur.role.key === "agronomist") && (
+                      <DropdownMenuItem 
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setDistAssignUser({ id: user.id, fullName: user.fullName });
+                          setIsDistModalOpen(true);
+                        }}
+                      >
+                        <MapPin className="mr-2 h-4 w-4" />
+                        <span>Manage Districts</span>
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
@@ -180,6 +223,16 @@ export function UserList({ initialUsers }: { initialUsers: UserWithRoles[] }) {
         user={editingUser}
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
+      />
+
+      <DistrictAssignmentModal 
+        user={distAssignUser}
+        isOpen={isDistModalOpen}
+        onClose={() => setIsDistModalOpen(false)}
+        allDistricts={allDistricts}
+        assignedDistrictIds={
+          users.find(u => u.id === distAssignUser?.id)?.agronomistDistricts.map(ad => ad.district.id) || []
+        }
       />
     </div>
   );

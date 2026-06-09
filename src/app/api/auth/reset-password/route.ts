@@ -44,6 +44,9 @@ export async function POST(request: Request) {
       roles,
       mustChangePassword: false,
       sessionId: user.sessionId, // Keep the same session
+      organizationId: user.organizationId,
+      organizationSlug: user.organizationSlug,
+      organizationStatus: user.organizationStatus,
     });
 
     const response = NextResponse.json({ message: "Password updated." });

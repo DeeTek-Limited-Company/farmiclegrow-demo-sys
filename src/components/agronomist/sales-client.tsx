@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { buildInternalOrgTracePath } from "@/lib/trace/urls";
 
 type BatchOption = {
   id: string;
@@ -78,6 +79,8 @@ export function SalesClient({
   initialBatches: BatchOption[];
   initialSales: SaleRow[];
 }) {
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = String(params.orgSlug || "");
   const router = useRouter();
   const [sales, setSales] = useState<SaleRow[]>(initialSales);
   const [q, setQ] = useState("");
@@ -249,7 +252,7 @@ export function SalesClient({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <CardTitle className="text-xl font-black tracking-tight truncate">
-                    <Link href={`/trace/${s.batch.batchId}`} className="hover:underline">
+                    <Link href={buildInternalOrgTracePath(orgSlug, s.batch.batchId)} className="hover:underline">
                       {s.batch.batchId}
                     </Link>
                     <span className="text-slate-400"> · {s.buyerName}</span>
@@ -419,4 +422,3 @@ export function SalesClient({
     </div>
   );
 }
-

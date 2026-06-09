@@ -21,3 +21,24 @@ export async function isSessionValid(sessionId: string) {
     return false;
   }
 }
+
+export async function revokeSession(sessionId: string) {
+  await prisma.session.updateMany({
+    where: { id: sessionId, revoked: false },
+    data: { revoked: true },
+  });
+}
+
+export async function revokeSessionsForOrg(organizationId: string) {
+  await prisma.session.updateMany({
+    where: { organizationId, revoked: false },
+    data: { revoked: true },
+  });
+}
+
+export async function revokeSessionsForUser(userId: string) {
+  await prisma.session.updateMany({
+    where: { userId, revoked: false },
+    data: { revoked: true },
+  });
+}

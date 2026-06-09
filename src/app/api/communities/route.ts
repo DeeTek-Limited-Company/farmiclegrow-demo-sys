@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const createSchema = z.object({
   name: z.string().min(2, "Community name is required"),
@@ -17,14 +18,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(request.url);
   const districtId = url.searchParams.get("districtId") || undefined;
 
-  let whereClause: any = {};
+  let whereClause: any = { organizationId };
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: actor.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const allowedDistrictIds = assignments.map((a) => a.districtId);
@@ -61,6 +68,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -69,6 +78,7 @@ export async function POST(request: Request) {
 
   const community = await prisma.community.create({
     data: {
+      organizationId,
       name: parsed.data.name.trim(),
       districtId: parsed.data.districtId,
       latitude: parsed.data.latitude,
@@ -80,4 +90,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ community }, { status: 201 });
 }
-

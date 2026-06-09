@@ -25,6 +25,14 @@ import { useAuth } from "@/lib/auth-context";
 export function MobileNav({ userRole }: { userRole?: string }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => {
+    if (!orgBase) return href;
+    if (href.startsWith("/super-admin") || href.startsWith("/trace") || href.startsWith("/login") || href === "/") {
+      return href;
+    }
+    return `${orgBase}${href}`;
+  };
   
   const role = userRole || user?.role || "farmer";
 
@@ -66,15 +74,15 @@ export function MobileNav({ userRole }: { userRole?: string }) {
       default:
         return [
           { icon: LayoutDashboard, label: "Home", href: "/farmer" },
-          { icon: TrendingUp, label: "Records", href: "/farmer/production" },
-          { icon: Plus, label: "Log", href: "/farmer/production/new", isCenter: true },
+          { icon: TrendingUp, label: "Records", href: "/farmer" },
+          { icon: Plus, label: "Log", href: "/farmer", isCenter: true },
           { icon: Bell, label: "Alerts", href: "/farmer/notifications" },
           { icon: Menu, label: "Menu", href: "/settings" },
         ];
     }
   };
 
-  const navItems = getNavItems();
+  const navItems = getNavItems().map((item) => ({ ...item, href: withOrg(item.href) }));
 
   return (
     <div className="lg:hidden fixed bottom-6 left-0 right-0 z-50 px-6">
@@ -85,7 +93,7 @@ export function MobileNav({ userRole }: { userRole?: string }) {
           if (item.isCenter) {
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${item.label}`}
                 href={item.href}
                 className="relative -top-8"
               >
@@ -103,7 +111,7 @@ export function MobileNav({ userRole }: { userRole?: string }) {
 
           return (
             <Link
-              key={item.href}
+              key={`${item.href}-${item.label}`}
               href={item.href}
               className={cn(
                 "flex flex-col items-center justify-center transition-all duration-300 px-3 py-2 rounded-2xl min-w-[64px]",

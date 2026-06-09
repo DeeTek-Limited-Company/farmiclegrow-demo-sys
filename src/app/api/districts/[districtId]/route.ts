@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ districtId: string }>;
@@ -18,6 +19,7 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
   const { districtId } = await context.params;
   const payload = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(payload);
@@ -26,7 +28,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const district = await prisma.district.update({
-    where: { id: districtId },
+    where: { id: districtId, organizationId },
     data: { name: parsed.data.name.trim(), regionId: parsed.data.regionId },
     include: { region: true },
   });
@@ -40,19 +42,25 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
   const { districtId } = await context.params;
 
-  const hasCommunities = await prisma.community.count({ where: { districtId } });
+  const hasCommunities = await prisma.community.count({ 
+    where: { districtId, organizationId } 
+  });
   if (hasCommunities > 0) {
     return NextResponse.json({ message: "Cannot delete district with communities." }, { status: 400 });
   }
 
-  const assigned = await prisma.agronomistDistrict.count({ where: { districtId } });
+  const assigned = await prisma.agronomistDistrict.count({ 
+    where: { districtId, organizationId } 
+  });
   if (assigned > 0) {
     return NextResponse.json({ message: "Cannot delete district with agronomist assignments." }, { status: 400 });
   }
 
-  await prisma.district.delete({ where: { id: districtId } });
+  await prisma.district.delete({ 
+    where: { id: districtId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

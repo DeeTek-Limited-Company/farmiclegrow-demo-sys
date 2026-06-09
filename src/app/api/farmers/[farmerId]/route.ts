@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const updateSchema = z.object({
   externalRef: z.string().trim().max(120).optional().or(z.literal("")),
@@ -39,15 +41,18 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(_request.url);
   const includeTimeline = url.searchParams.get("includeTimeline") === "1";
 
   const { farmerId } = await context.params;
 
-  const whereClause: any = { id: farmerId };
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  const whereClause: any = { id: farmerId, organizationId };
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -112,6 +117,9 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const { farmerId } = await context.params;
   const payload = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(payload);
@@ -124,14 +132,24 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const data = parsed.data;
 
-  const whereClause: any = { id: farmerId };
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin")) {
+  const whereClause: any = { id: farmerId, organizationId };
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     whereClause.community = { districtId: { in: districtIds.length ? districtIds : ["__none__"] } };
+  }
+
+  if (data.communityId) {
+    const community = await prisma.community.findFirst({
+      where: { id: data.communityId, organizationId },
+      select: { id: true },
+    });
+    if (!community) {
+      return NextResponse.json({ message: "Invalid communityId." }, { status: 400 });
+    }
   }
 
   const existing = await prisma.farmer.findFirst({
@@ -152,8 +170,8 @@ export async function PUT(request: Request, context: RouteContext) {
   const primaryLocation = primaryProfile?.locations[0];
 
   const updated = await prisma.$transaction(async (tx) => {
-    const farmer = await tx.farmer.update({
-      where: { id: farmerId },
+    const farmerUpdate = await tx.farmer.updateMany({
+      where: { id: farmerId, organizationId },
       data: {
         externalRef: data.externalRef || null,
         fullName: data.fullName,
@@ -166,10 +184,23 @@ export async function PUT(request: Request, context: RouteContext) {
       },
     });
 
+    if (farmerUpdate.count !== 1) {
+      throw new Error("Farmer not found or unauthorized.");
+    }
+
+    const farmer = await tx.farmer.findFirst({
+      where: { id: farmerId, organizationId },
+    });
+
+    if (!farmer) {
+      throw new Error("Farmer not found or unauthorized.");
+    }
+
     const profile =
       primaryProfile == null
         ? await tx.farmProfile.create({
             data: {
+              organizationId: farmer.organizationId,
               farmerId: farmerId,
               farmName: data.farmName,
               farmSize: data.farmSize,
@@ -180,23 +211,31 @@ export async function PUT(request: Request, context: RouteContext) {
               totalAreaHectare: data.totalAreaHectare,
             },
           })
-        : await tx.farmProfile.update({
-            where: { id: primaryProfile.id },
-            data: {
-              farmName: data.farmName,
-              farmSize: data.farmSize,
-              farmSizeUnit: data.farmSizeUnit || null,
-              ownershipType: data.ownershipType || null,
-              irrigationType: data.irrigationType || null,
-              numberOfPlots: data.numberOfPlots,
-              totalAreaHectare: data.totalAreaHectare,
-            },
-          });
+        : await (async () => {
+            await tx.farmProfile.updateMany({
+              where: { id: primaryProfile.id, organizationId },
+              data: {
+                farmName: data.farmName,
+                farmSize: data.farmSize,
+                farmSizeUnit: data.farmSizeUnit || null,
+                ownershipType: data.ownershipType || null,
+                irrigationType: data.irrigationType || null,
+                numberOfPlots: data.numberOfPlots,
+                totalAreaHectare: data.totalAreaHectare,
+              },
+            });
+            return tx.farmProfile.findFirst({ where: { id: primaryProfile.id, organizationId } });
+          })();
+
+    if (!profile) {
+      throw new Error("Farm profile not found or unauthorized.");
+    }
 
     if (data.location) {
       if (primaryLocation == null) {
         await tx.farmLocation.create({
           data: {
+            organizationId: farmer.organizationId,
             farmProfileId: profile.id,
             latitude: data.location.latitude ?? null,
             longitude: data.location.longitude ?? null,
@@ -204,8 +243,8 @@ export async function PUT(request: Request, context: RouteContext) {
           },
         });
       } else {
-        await tx.farmLocation.update({
-          where: { id: primaryLocation.id },
+        await tx.farmLocation.updateMany({
+          where: { id: primaryLocation.id, organizationId },
           data: {
             latitude: data.location.latitude ?? null,
             longitude: data.location.longitude ?? null,
@@ -219,6 +258,17 @@ export async function PUT(request: Request, context: RouteContext) {
     return farmer;
   });
 
+  await logAudit({
+    action: "FARMER_UPDATED",
+    organizationId,
+    userId: actor.id,
+    details: {
+      farmerId,
+      updates: data,
+    },
+    status: "SUCCESS",
+  });
+
   return NextResponse.json({ farmer: updated });
 }
 
@@ -228,12 +278,15 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const { farmerId } = await context.params;
 
-  const whereClause: any = { id: farmerId };
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin")) {
+  const whereClause: any = { id: farmerId, organizationId };
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -254,14 +307,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
       // 1. Manually cascade delete OrderItems related to the farmer's Batches
       // (This bypasses the need for a Prisma schema 'db push' which is failing on Supabase)
       const batches = await tx.batch.findMany({
-        where: { farmerId: farmerId },
+        where: { farmerId: farmerId, organizationId },
         select: { id: true }
       });
       
       const batchIds = batches.map((b) => b.id);
       if (batchIds.length > 0) {
         await tx.orderItem.deleteMany({
-          where: { batchId: { in: batchIds } }
+          where: { batchId: { in: batchIds }, organizationId }
         });
       }
 
@@ -270,22 +323,45 @@ export async function DELETE(_request: Request, context: RouteContext) {
       //   ProductionRecord
       //   Certification
       //   FarmerSubmission → ApprovalAction
-      await tx.farmer.delete({ where: { id: farmerId } });
+      await tx.farmer.deleteMany({ where: { id: farmerId, organizationId } });
 
       // Also delete the linked User account (login credentials)
       if (existing.externalRef) {
-        const linkedUser = await tx.user.findUnique({
-          where: { id: existing.externalRef },
+        const linkedUser = await tx.user.findFirst({
+          where: { id: existing.externalRef, organizationId },
         });
         if (linkedUser) {
-          await tx.user.delete({ where: { id: existing.externalRef } });
+          await tx.user.deleteMany({ where: { id: existing.externalRef, organizationId } });
         }
       }
+    });
+
+    await logAudit({
+      action: "FARMER_DELETED",
+      organizationId,
+      userId: actor.id,
+      details: {
+        farmerId,
+        externalRef: existing.externalRef,
+      },
+      status: "SUCCESS",
     });
 
     return NextResponse.json({ message: "Farmer and all associated records deleted successfully." });
   } catch (error: any) {
     console.error("Failed to delete farmer:", error);
+
+    await logAudit({
+      action: "FARMER_DELETED",
+      organizationId,
+      userId: actor.id,
+      details: {
+        farmerId,
+        error: error?.message || String(error),
+      },
+      status: "FAILURE",
+    });
+
     return NextResponse.json({ message: error.message || "Failed to delete farmer due to database constraints." }, { status: 500 });
   }
 }

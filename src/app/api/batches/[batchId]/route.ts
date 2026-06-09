@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ batchId: string }>;
@@ -12,10 +13,13 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const { batchId } = await context.params;
 
-  const batch = await prisma.batch.findUnique({
-    where: { batchId },
+  const batch = await prisma.batch.findFirst({
+    where: { batchId, organizationId },
     include: {
       farmer: true,
       productionRecord: true,
@@ -27,8 +31,8 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findUnique({
-      where: { externalRef: auth.user.id },
+    const farmer = await prisma.farmer.findFirst({
+      where: { externalRef: actor.id, organizationId },
       select: { id: true },
     });
     if (!farmer || farmer.id !== batch.farmerId) {
@@ -42,15 +46,21 @@ export async function GET(_request: Request, context: RouteContext) {
     !auth.user.roles.includes("ops")
   ) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
-    const farmer = await prisma.farmer.findUnique({
-      where: { id: batch.farmerId },
-      include: { community: true },
+    const farmer = await prisma.farmer.findFirst({
+      where: { id: batch.farmerId, organizationId },
+      select: { communityId: true },
     });
-    const districtId = farmer?.community?.districtId;
+    const communityId = farmer?.communityId ?? null;
+    const districtId = !communityId
+      ? null
+      : (await prisma.community.findFirst({
+          where: { id: communityId, organizationId },
+          select: { districtId: true },
+        }))?.districtId ?? null;
     if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "Unauthorized." }, { status: 403 });
     }

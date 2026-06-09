@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ harvestId: string }>;
@@ -31,11 +32,11 @@ const updateSchema = z.object({
   notes: z.string().trim().min(1).optional().nullable(),
 });
 
-async function getAuthorizedHarvest(authUser: { id: string; roles: string[] }, harvestId: string) {
-  const whereClause: any = { id: harvestId };
+async function getAuthorizedHarvest(authUser: { id: string; roles: string[]; organizationId: string }, harvestId: string) {
+  const whereClause: any = { id: harvestId, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -57,8 +58,12 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { harvestId } = await context.params;
-  const harvest = await getAuthorizedHarvest(auth.user, harvestId);
+  const harvest = await getAuthorizedHarvest(actor, harvestId);
   if (!harvest) return NextResponse.json({ message: "Harvest record not found or unauthorized." }, { status: 404 });
 
   return NextResponse.json({ harvest });
@@ -68,8 +73,12 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { harvestId } = await context.params;
-  const existing = await getAuthorizedHarvest(auth.user, harvestId);
+  const existing = await getAuthorizedHarvest(actor, harvestId);
   if (!existing) return NextResponse.json({ message: "Harvest record not found or unauthorized." }, { status: 404 });
 
   const payload = await request.json().catch(() => null);
@@ -85,8 +94,8 @@ export async function PUT(request: Request, context: RouteContext) {
   const prevProductionRecordId = existing.productionRecordId;
 
   if (data.productionRecordId) {
-    const pr = await prisma.productionRecord.findUnique({
-      where: { id: data.productionRecordId },
+    const pr = await prisma.productionRecord.findFirst({
+      where: { id: data.productionRecordId, organizationId },
       select: { id: true, farmerId: true, plotId: true },
     });
     if (!pr) return NextResponse.json({ message: "Production record not found." }, { status: 404 });
@@ -99,8 +108,8 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const next = await tx.harvestRecord.update({
-      where: { id: harvestId },
+    const updateResult = await tx.harvestRecord.updateMany({
+      where: { id: harvestId, organizationId },
       data: {
         productionRecordId: data.productionRecordId ?? undefined,
         harvestDate: data.harvestDate ? new Date(data.harvestDate) : undefined,
@@ -119,26 +128,38 @@ export async function PUT(request: Request, context: RouteContext) {
       },
     });
 
+    if (updateResult.count !== 1) {
+      throw new Error("Harvest record not found or unauthorized.");
+    }
+
+    const next = await tx.harvestRecord.findFirst({
+      where: { id: harvestId, organizationId },
+    });
+
+    if (!next) {
+      throw new Error("Harvest record not found or unauthorized.");
+    }
+
     const ids = new Set<string>();
     if (prevProductionRecordId) ids.add(prevProductionRecordId);
     if (next.productionRecordId) ids.add(next.productionRecordId);
 
     for (const id of ids) {
       const agg = await tx.harvestRecord.aggregate({
-        where: { productionRecordId: id },
+        where: { productionRecordId: id, organizationId },
         _max: { harvestDate: true },
       });
       try {
-        await tx.productionRecord.update({
-          where: { id },
-          data: { actualHarvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id, organizationId },
+          data: { actualHarvestDate: agg._max?.harvestDate ?? null } as any,
         });
       } catch (err: any) {
         const msg = String(err?.message || "");
         if (!msg.includes("Unknown argument `actualHarvestDate`")) throw err;
-        await tx.productionRecord.update({
-          where: { id },
-          data: { harvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id, organizationId },
+          data: { harvestDate: agg._max?.harvestDate ?? null } as any,
         });
       }
     }
@@ -153,12 +174,16 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { harvestId } = await context.params;
-  const existing = await getAuthorizedHarvest(auth.user, harvestId);
+  const existing = await getAuthorizedHarvest(actor, harvestId);
   if (!existing) return NextResponse.json({ message: "Harvest record not found or unauthorized." }, { status: 404 });
 
   const hasBatches = await prisma.batch.findFirst({
-    where: { productionRecordId: existing.productionRecordId || "__none__" },
+    where: { productionRecordId: existing.productionRecordId || "__none__", organizationId },
     select: { id: true },
   });
   if (existing.productionRecordId && hasBatches) {
@@ -166,23 +191,23 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.harvestRecord.delete({ where: { id: harvestId } });
+    await tx.harvestRecord.deleteMany({ where: { id: harvestId, organizationId } });
     if (existing.productionRecordId) {
       const agg = await tx.harvestRecord.aggregate({
-        where: { productionRecordId: existing.productionRecordId },
+        where: { productionRecordId: existing.productionRecordId, organizationId },
         _max: { harvestDate: true },
       });
       try {
-        await tx.productionRecord.update({
-          where: { id: existing.productionRecordId },
-          data: { actualHarvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id: existing.productionRecordId, organizationId },
+          data: { actualHarvestDate: agg._max?.harvestDate ?? null } as any,
         });
       } catch (err: any) {
         const msg = String(err?.message || "");
         if (!msg.includes("Unknown argument `actualHarvestDate`")) throw err;
-        await tx.productionRecord.update({
-          where: { id: existing.productionRecordId },
-          data: { harvestDate: agg._max.harvestDate ?? null } as any,
+        await tx.productionRecord.updateMany({
+          where: { id: existing.productionRecordId, organizationId },
+          data: { harvestDate: agg._max?.harvestDate ?? null } as any,
         });
       }
     }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ locationId: string }>;
@@ -17,6 +18,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const organizationId = requireOrgScope(auth.user);
 
   const payload = await request.json().catch(() => null);
   const parsed = schema.safeParse(payload);
@@ -43,13 +46,20 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ message: "Location not found" }, { status: 404 });
   }
 
+  if (location.organizationId !== organizationId) {
+    return NextResponse.json({ message: "Location not found" }, { status: 404 });
+  }
+
   if (
     auth.user.roles.includes("agronomist") &&
     !auth.user.roles.includes("admin") &&
     !auth.user.roles.includes("ops")
   ) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: auth.user.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -71,6 +81,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (farmerExternalRef) {
       await tx.notification.create({
         data: {
+          organizationId,
           userId: farmerExternalRef,
           type: "SYSTEM",
           title: parsed.data.isValidated ? "Farm location verified" : "Farm location unverified",

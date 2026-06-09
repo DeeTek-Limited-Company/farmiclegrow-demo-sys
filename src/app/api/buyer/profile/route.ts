@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const profileSchema = z.object({
   companyName: z.string().min(2, "Company name is required"),
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   try {
     const body = await request.json();
     const validated = profileSchema.parse(body);
@@ -40,7 +44,8 @@ export async function POST(request: Request) {
       update: validated,
       create: {
         ...validated,
-        userId: auth.user.id,
+        organizationId,
+        userId: actor.id,
       },
     });
 

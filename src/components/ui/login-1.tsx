@@ -81,6 +81,7 @@ interface LoginV1Props {
   setPassword: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   isLoading: boolean;
+  isGlobal?: boolean;
 }
 
 import useEmblaCarousel from 'embla-carousel-react';
@@ -120,7 +121,8 @@ export default function LoginV1({
   password,
   setPassword,
   onSubmit,
-  isLoading
+  isLoading,
+  isGlobal
 }: LoginV1Props) {
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);

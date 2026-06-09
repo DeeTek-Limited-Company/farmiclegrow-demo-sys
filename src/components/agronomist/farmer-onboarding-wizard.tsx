@@ -44,6 +44,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CROP_OPTIONS } from "@/lib/crops";
 
+const STORAGE_KEY = "farmiclegrow_onboarding_draft";
+
 const steps = [
   { id: "personal", title: "Personal Info", description: "Identity & contact details", icon: User, schema: personalSchema },
   { id: "location", title: "Location", description: "Farm geography & region", icon: MapPin, schema: locationSchema },
@@ -300,12 +302,14 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
       if (!initialData && result.tempPassword) {
         // Show credentials screen before closing
+        clearDraft();
         setCredentials({
           email: result.email,
           tempPassword: result.tempPassword,
           farmerName: result.farmer?.fullName ?? data.personal.fullName,
         });
       } else {
+        clearDraft();
         toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
         onSuccess();
       }
@@ -364,6 +368,58 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
   };
 
   const progress = ((currentStep + 1) / steps.length) * 100;
+
+  // --- Draft Persistence Logic ---
+  const formData = watch();
+
+  // Save draft on change
+  useEffect(() => {
+    if (!initialData && !isSubmitting && !credentials) {
+      const draft = {
+        data: formData,
+        step: currentStep,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+    }
+  }, [formData, currentStep, initialData, isSubmitting, credentials]);
+
+  // Load draft on mount
+  useEffect(() => {
+    if (!initialData) {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const { data, step, timestamp } = JSON.parse(saved);
+          // Only offer to resume if it's less than 24 hours old
+          const isRecent = Date.now() - timestamp < 24 * 60 * 60 * 1000;
+          
+          if (isRecent && data) {
+            toast("Found an unfinished draft", {
+              description: "Would you like to resume where you left off?",
+              action: {
+                label: "Resume",
+                onClick: () => {
+                  Object.entries(data).forEach(([key, value]) => {
+                    setValue(key as any, value);
+                  });
+                  setCurrentStep(step || 0);
+                  toast.success("Draft restored!");
+                },
+              },
+              duration: 10000,
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse draft", e);
+        }
+      }
+    }
+  }, [initialData, setValue]);
+
+  const clearDraft = () => {
+    localStorage.removeItem(STORAGE_KEY);
+  };
 
   useEffect(() => {
     const loadDistricts = async () => {

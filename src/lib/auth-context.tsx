@@ -5,7 +5,7 @@ import { LoadingScreen } from '@/components/ui/loading-screen';
 import { apiFetch } from '@/lib/api-client';
 
 // Map our backend AppRole to the UI's UserRole
-export type UserRole = 'admin' | 'agronomist' | 'farmer' | 'ops' | 'buyer';
+export type UserRole = 'super_admin' | 'admin' | 'agronomist' | 'farmer' | 'ops' | 'buyer';
 
 interface User {
   id: string;
@@ -13,12 +13,14 @@ interface User {
   name: string;
   role: UserRole; // UI expects a single role currently
   roles?: UserRole[]; // Real backend provides multiple
+  organizationId: string | null;
+  organizationSlug: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, orgSlug?: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -43,14 +45,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('farmicle_user');
       }
-      window.location.href = '/';
+      window.location.href = user?.organizationSlug ? `/org/${user.organizationSlug}` : '/login';
     } catch (error) {
       console.error('Logout error:', error);
-      window.location.href = '/';
+      window.location.href = user?.organizationSlug ? `/org/${user.organizationSlug}` : '/login';
     } finally {
       setIsActionLoading(false);
     }
-  }, []);
+  }, [user?.organizationSlug]);
 
   // 1. Session Validation on Mount
   useEffect(() => {
@@ -67,6 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: backendUser.name,
             role: backendUser.roles[0] as UserRole,
             roles: backendUser.roles,
+            organizationId: backendUser.organizationId,
+            organizationSlug: backendUser.organizationSlug,
           };
           setUser(newUser);
         } else {
@@ -126,14 +130,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, resetInactivityTimeout]);
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (email: string, password: string, orgSlug?: string): Promise<void> => {
     setLoadingMessage("Securing your access...");
     setIsActionLoading(true);
     try {
       const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, orgSlug }),
       });
 
       const contentType = res.headers.get("content-type") || "";
@@ -164,6 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: backendUser.name,
         role: backendUser.roles[0] as UserRole,
         roles: backendUser.roles,
+        organizationId: backendUser.organizationId,
+        organizationSlug: backendUser.organizationSlug,
       };
 
       setUser(newUser);
