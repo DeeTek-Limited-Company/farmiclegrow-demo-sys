@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { getClientIp, publicNotFound, publicOptions, publicRateLimited, withPublicCors } from "@/lib/public/http";
+import {
+  resolveEffectivePublicTracePolicy,
+  type PublicTracePolicy as SectionedPublicTracePolicy,
+  type PublicTracePolicyOverride,
+} from "@/lib/trace/public-trace-policy";
 
 export async function OPTIONS(request: Request) {
   return publicOptions(request);
@@ -18,7 +23,7 @@ type TraceEvent =
   | { type: "SALE"; at: string; details: Record<string, unknown> }
   | { type: "MILESTONE"; at: string; details: Record<string, unknown> };
 
-interface PublicTracePolicy {
+interface LegacyPublicTracePolicy {
   showFarmer?: boolean;
   anonymizeFarmer?: boolean;
   showCooperativeName?: boolean;
@@ -34,7 +39,7 @@ interface PublicTracePolicy {
   locationPrecision?: "REGION" | "DISTRICT" | "COMMUNITY";
 }
 
-const DEFAULT_POLICY: PublicTracePolicy = {
+const DEFAULT_POLICY: LegacyPublicTracePolicy = {
   showFarmer: false,
   anonymizeFarmer: true,
   showCooperativeName: false,
@@ -62,9 +67,43 @@ function formatDate(date: Date, precision: "MONTH" | "EXACT" = "MONTH") {
 }
 
 function normalizeCode(raw: string) {
-  const trimmed = raw.trim();
-  const withoutPrefix = trimmed.replace(/^\/?trace\/?/i, "");
+  const trimmed = raw.trim().replace(/^https?:\/\/[^/]+/i, "");
+  const withoutOrgPrefix = trimmed.replace(/^\/?org\/[^/]+\/trace\/?/i, "");
+  const withoutPrefix = withoutOrgPrefix.replace(/^\/?trace\/?/i, "");
   return withoutPrefix;
+}
+
+function hasSectionsPolicy(value: unknown): value is SectionedPublicTracePolicy | PublicTracePolicyOverride {
+  return !!value && typeof value === "object" && !Array.isArray(value) && "sections" in value;
+}
+
+function buildSectionedPolicyFromLegacy(
+  policy: LegacyPublicTracePolicy,
+): SectionedPublicTracePolicy {
+  const showFarmer = policy.showFarmer === true;
+  const showQuality = policy.showQuality === true;
+  const anonymizeFarmer = policy.anonymizeFarmer !== false;
+
+  return {
+    sections: {
+      farmer: {
+        enabled: showFarmer,
+        fields: {
+          name: showFarmer && !anonymizeFarmer,
+          anonymizedName: showFarmer && anonymizeFarmer,
+          cooperativeName: showFarmer && policy.showCooperativeName === true,
+          certifications: showFarmer && policy.showCertifications === true,
+        },
+      },
+      quality: {
+        enabled: showQuality,
+        fields: {
+          passFail: showQuality,
+          moisturePct: showQuality && policy.qualityPrecision === "FULL",
+        },
+      },
+    },
+  };
 }
 
 async function getPublicTraceResponse(request: Request, rawCode: string, slug?: string) {
@@ -151,7 +190,7 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
   const isLimited = batch.publicTraceVisibility === "LIMITED";
 
   // Resolve Policy: Organization Config or fallback to Default, overridden if Limited Mode is active
-  const policy: PublicTracePolicy = isLimited
+  const legacyPolicy: LegacyPublicTracePolicy = isLimited
     ? {
         showFarmer: false,
         showLocation: true,
@@ -167,7 +206,17 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
         ...((batch.organization.publicTracePolicy as Record<string, unknown>) || {}),
       };
 
-  const datePrecision = policy.datePrecision ?? "MONTH";
+  const orgPolicy = hasSectionsPolicy(batch.organization.publicTracePolicy)
+    ? batch.organization.publicTracePolicy
+    : buildSectionedPolicyFromLegacy(legacyPolicy);
+
+  const effectivePolicy = resolveEffectivePublicTracePolicy({
+    visibility: batch.publicTraceVisibility,
+    orgPolicy,
+    batchOverride: batch.publicTracePolicyOverride as PublicTracePolicyOverride | null | undefined,
+  });
+
+  const datePrecision = legacyPolicy.datePrecision ?? "MONTH";
 
   const harvestRecords = await prisma.harvestRecord.findMany({
     where: { productionRecordId: batch.productionRecordId, organizationId: batch.organizationId },
@@ -200,19 +249,20 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
     });
 
     // Conditionally include Quality Test details
-    if (policy.showQuality) {
+    if (effectivePolicy.sections.quality.enabled) {
       for (const test of harvest.qualityTests) {
-        const details: Record<string, unknown> = {
-          passed: test.passed,
-        };
+        const details: Record<string, unknown> = {};
 
-        if (policy.qualityPrecision === "FULL") {
+        if (effectivePolicy.sections.quality.fields.passFail) {
+          details.passed = test.passed;
+        }
+
+        if (effectivePolicy.sections.quality.fields.moisturePct) {
           details.moisturePct = test.moisturePct ? Number(test.moisturePct) : null;
-          details.foreignMatterPct = test.foreignMatterPct ? Number(test.foreignMatterPct) : null;
-          details.brokenGrainPct = test.brokenGrainPct ? Number(test.brokenGrainPct) : null;
-          details.aflatoxinTest = test.aflatoxinTest ?? null;
-          details.colorGrade = test.colorGrade ?? null;
-          details.pestDamage = test.pestDamage ?? null;
+        }
+
+        if (Object.keys(details).length === 0) {
+          continue;
         }
 
         events.push({
@@ -225,18 +275,18 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
   }
 
   // Conditionally include Logistics events (Warehousing + Movements + Milestones + Sanitized Sales)
-  if (policy.showLogistics) {
+  if (legacyPolicy.showLogistics) {
     for (const entry of batch.warehouseEntries) {
       events.push({
         type: "WAREHOUSE_IN",
         at: formatDate(entry.dateIn, datePrecision),
         details: {
-          warehouseName: policy.logisticsPrecision === "EXACT" ? entry.warehouseName : "Authorized Warehouse",
-          warehouseLocation: policy.logisticsPrecision === "EXACT" ? (entry.warehouseLocation ?? null) : null,
+          warehouseName: legacyPolicy.logisticsPrecision === "EXACT" ? entry.warehouseName : "Authorized Warehouse",
+          warehouseLocation: legacyPolicy.logisticsPrecision === "EXACT" ? (entry.warehouseLocation ?? null) : null,
           quantityStored: entry.quantityStored ? Number(entry.quantityStored) : null,
-          temperature: policy.logisticsPrecision === "EXACT" && entry.temperature ? Number(entry.temperature) : null,
-          humidity: policy.logisticsPrecision === "EXACT" && entry.humidity ? Number(entry.humidity) : null,
-          stackNumber: policy.logisticsPrecision === "EXACT" ? (entry.stackNumber ?? null) : null,
+          temperature: legacyPolicy.logisticsPrecision === "EXACT" && entry.temperature ? Number(entry.temperature) : null,
+          humidity: legacyPolicy.logisticsPrecision === "EXACT" && entry.humidity ? Number(entry.humidity) : null,
+          stackNumber: legacyPolicy.logisticsPrecision === "EXACT" ? (entry.stackNumber ?? null) : null,
         },
       });
 
@@ -245,8 +295,8 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
           type: "WAREHOUSE_OUT",
           at: formatDate(entry.dateOut, datePrecision),
           details: {
-            warehouseName: policy.logisticsPrecision === "EXACT" ? entry.warehouseName : "Authorized Warehouse",
-            warehouseLocation: policy.logisticsPrecision === "EXACT" ? (entry.warehouseLocation ?? null) : null,
+            warehouseName: legacyPolicy.logisticsPrecision === "EXACT" ? entry.warehouseName : "Authorized Warehouse",
+            warehouseLocation: legacyPolicy.logisticsPrecision === "EXACT" ? (entry.warehouseLocation ?? null) : null,
           },
         });
       }
@@ -257,8 +307,8 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
         type: "DISPATCH",
         at: formatDate(move.dispatchDate, datePrecision),
         details: {
-          fromLocation: policy.logisticsPrecision === "EXACT" ? move.fromLocation : "Origin Facility",
-          toLocation: policy.logisticsPrecision === "EXACT" ? move.toLocation : "Destination Facility",
+          fromLocation: legacyPolicy.logisticsPrecision === "EXACT" ? move.fromLocation : "Origin Facility",
+          toLocation: legacyPolicy.logisticsPrecision === "EXACT" ? move.toLocation : "Destination Facility",
           quantitySent: move.quantitySent ? Number(move.quantitySent) : null,
           // Omit driverName and vehicleNumber to conform with "Always Private" list
           driverName: null,
@@ -271,7 +321,7 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
           type: "ARRIVAL",
           at: formatDate(move.arrivalDate, datePrecision),
           details: {
-            toLocation: policy.logisticsPrecision === "EXACT" ? move.toLocation : "Destination Facility",
+            toLocation: legacyPolicy.logisticsPrecision === "EXACT" ? move.toLocation : "Destination Facility",
             quantityReceived: move.quantityReceived ? Number(move.quantityReceived) : null,
             conditionOnArrival: move.conditionOnArrival ?? null,
           },
@@ -286,7 +336,7 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
         at: formatDate(sale.dateSold, datePrecision),
         details: {
           // Strictly static destination to prevent buyer details exposure
-          destination: policy.logisticsPrecision === "EXACT" ? (sale.destination ?? null) : "Export Market",
+          destination: legacyPolicy.logisticsPrecision === "EXACT" ? (sale.destination ?? null) : "Export Market",
           quantitySold: sale.quantitySold ? Number(sale.quantitySold) : null,
           // Omit pricing, invoices, paymentStatus, buyerName (Always Private list)
           buyerName: null,
@@ -303,7 +353,7 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
         details: {
           milestoneType: milestone.type,
           status: milestone.status,
-          location: policy.logisticsPrecision === "EXACT" ? (milestone.location ?? null) : null,
+          location: legacyPolicy.logisticsPrecision === "EXACT" ? (milestone.location ?? null) : null,
           // Omit performedBy and notes (Always Private list)
           performedBy: null,
           notes: null,
@@ -323,32 +373,34 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
     cooperativeName: null,
   };
 
-  if (policy.showLocation !== false) {
-    const precision = policy.locationPrecision ?? "REGION";
+  if (legacyPolicy.showLocation !== false) {
+    const precision = legacyPolicy.locationPrecision ?? "REGION";
     const comm = batch.farmer.community;
     if (comm) {
       origin.region = comm.district?.region?.name ?? null;
       if ((precision === "DISTRICT" || precision === "COMMUNITY") && comm.district) {
         origin.district = comm.district.name;
       }
-      if (precision === "COMMUNITY" && policy.showCommunityName) {
+      if (precision === "COMMUNITY" && legacyPolicy.showCommunityName) {
         origin.community = comm.name;
       }
     }
   }
 
-  if (policy.showFarmer && policy.showCooperativeName !== false) {
+  if (effectivePolicy.sections.farmer.enabled && effectivePolicy.sections.farmer.fields.cooperativeName) {
     origin.cooperativeName = batch.farmer.cooperativeName ?? null;
   }
 
   // Build Farmer Details block
   let farmerDetails = null;
-  if (policy.showFarmer) {
-    let name = "Anonymized Farmer";
-    if (policy.anonymizeFarmer !== false) {
+  if (
+    effectivePolicy.sections.farmer.enabled &&
+    (effectivePolicy.sections.farmer.fields.name ||
+      effectivePolicy.sections.farmer.fields.anonymizedName)
+  ) {
+    let name = batch.farmer.fullName;
+    if (!effectivePolicy.sections.farmer.fields.name && effectivePolicy.sections.farmer.fields.anonymizedName) {
       name = `Farmer ${batch.farmer.id.substring(0, 6).toUpperCase()}`;
-    } else {
-      name = batch.farmer.fullName;
     }
     farmerDetails = {
       name,
@@ -357,7 +409,7 @@ async function getPublicTraceResponse(request: Request, rawCode: string, slug?: 
 
   // Build Certifications block
   let certifications = null;
-  if (policy.showCertifications && batch.farmer.certifications) {
+  if (effectivePolicy.sections.farmer.enabled && effectivePolicy.sections.farmer.fields.certifications) {
     certifications = batch.farmer.certifications.map((c) => ({
       name: c.name,
       issuer: c.issuer ?? null,

@@ -21,7 +21,14 @@ import {
   Warehouse,
 } from "lucide-react";
 import { InternalTraceActions } from "@/components/trace/internal-trace-actions";
+import { PublicTraceControls } from "@/components/trace/public-trace-controls";
 import { buildInternalTraceViewModel } from "@/lib/trace/internal-trace";
+import {
+  normalizeBatchPublicTracePolicyOverride,
+  resolveEffectivePublicTracePolicy,
+  type PublicTracePolicyOverride,
+} from "@/lib/trace/public-trace-policy";
+import { buildOrgTraceUrl } from "@/lib/trace/urls";
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "—";
@@ -233,6 +240,24 @@ export default async function InternalTracePage({ params }: PageProps) {
       inputTraceabilities,
       harvestRecords,
     },
+  });
+
+  const orgPolicy = batch.organization.publicTracePolicy as PublicTracePolicyOverride | null;
+  const batchOverride = batch.publicTracePolicyOverride as PublicTracePolicyOverride | null;
+
+  const orgDefaultPolicy = normalizeBatchPublicTracePolicyOverride(orgPolicy ?? undefined);
+
+  const effectivePublicTracePolicy = resolveEffectivePublicTracePolicy({
+    visibility: batch.publicTraceVisibility,
+    orgPolicy: orgPolicy ?? undefined,
+    batchOverride: batchOverride ?? undefined,
+  });
+
+  const publicTraceUrl = buildOrgTraceUrl({
+    orgSlug,
+    batchId: batch.batchId,
+    configuredUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    nodeEnv: process.env.NODE_ENV,
   });
 
   const qualityTestCount = traceView.harvestTrust.harvestRecords.reduce(
@@ -741,6 +766,14 @@ export default async function InternalTracePage({ params }: PageProps) {
 
         <div className="space-y-6">
           <InternalTraceActions orgSlug={orgSlug} batchId={batch.batchId} cropName={batch.crop} />
+
+          <PublicTraceControls
+            batchId={batch.batchId}
+            publicTraceUrl={publicTraceUrl}
+            initialPolicy={effectivePublicTracePolicy}
+            orgDefaultPolicy={orgDefaultPolicy}
+            visibility={batch.publicTraceVisibility}
+          />
 
           <Card className="rounded-[2.25rem] border-slate-200">
             <CardHeader>
