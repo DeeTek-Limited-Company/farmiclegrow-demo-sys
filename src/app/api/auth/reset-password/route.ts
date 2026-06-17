@@ -26,7 +26,6 @@ export async function POST(request: Request) {
       data: {
         passwordHash,
         mustChangePassword: false,
-        temporaryPassword: null, // Clear the temporary password once changed
       },
       include: {
         userRoles: {
@@ -44,6 +43,9 @@ export async function POST(request: Request) {
       roles,
       mustChangePassword: false,
       sessionId: user.sessionId, // Keep the same session
+      organizationId: user.organizationId,
+      organizationSlug: user.organizationSlug,
+      organizationStatus: user.organizationStatus,
     });
 
     const response = NextResponse.json({ message: "Password updated." });

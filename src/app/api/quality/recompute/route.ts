@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const schema = z.object({
   farmerId: z.string().cuid().optional(),
@@ -14,6 +15,8 @@ export async function POST(request: Request) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const organizationId = requireOrgScope(auth.user);
 
   const payload = await request.json().catch(() => null);
   const parsed = schema.safeParse(payload);
@@ -28,14 +31,22 @@ export async function POST(request: Request) {
   }
 
   if (farmerId) {
-    const score = await recomputeFarmerQualityScore(prisma, farmerId);
-    if (score === null) {
+    const farmer = await prisma.farmer.findFirst({
+      where: { id: farmerId, organizationId },
+      select: { id: true },
+    });
+    if (!farmer) {
       return NextResponse.json({ message: "Farmer not found" }, { status: 404 });
     }
+
+    const score = await recomputeFarmerQualityScore(prisma, farmerId);
     return NextResponse.json({ updated: 1, farmerId, score });
   }
 
-  const farmers = await prisma.farmer.findMany({ select: { id: true } });
+  const farmers = await prisma.farmer.findMany({ 
+    where: { organizationId },
+    select: { id: true } 
+  });
   let updated = 0;
   for (const f of farmers) {
     await recomputeFarmerQualityScore(prisma, f.id);
@@ -44,4 +55,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ updated });
 }
-

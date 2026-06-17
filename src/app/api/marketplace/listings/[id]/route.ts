@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const updateListingSchema = z.object({
   title: z.string().trim().min(1).max(255).optional(),
@@ -26,11 +27,12 @@ export async function GET(
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+  const organizationId = requireOrgScope(auth.user);
 
   const { id } = await params;
 
-  const listing = await prisma.marketplaceListing.findUnique({
-    where: { id },
+  const listing = await prisma.marketplaceListing.findFirst({
+    where: { id, organizationId },
     include: {
       batch: {
         include: {
@@ -56,6 +58,7 @@ export async function PATCH(
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+  const organizationId = requireOrgScope(auth.user);
 
   const { id } = await params;
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
@@ -71,13 +74,34 @@ export async function PATCH(
   }
 
   try {
-    const listing = await prisma.marketplaceListing.update({
-      where: { id },
+    const existing = await prisma.marketplaceListing.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ message: "Listing not found" }, { status: 404 });
+    }
+
+    const updateResult = await prisma.marketplaceListing.updateMany({
+      where: { id, organizationId },
       data: parsed.data,
     });
 
+    if (updateResult.count !== 1) {
+      return NextResponse.json({ message: "Listing not found" }, { status: 404 });
+    }
+
+    const listing = await prisma.marketplaceListing.findFirst({
+      where: { id, organizationId },
+    });
+
+    if (!listing) {
+      return NextResponse.json({ message: "Listing not found" }, { status: 404 });
+    }
+
     await logAudit({
       action: "MARKETPLACE_LISTING_UPDATED",
+      organizationId,
       userId: auth.user.id,
       details: { listingId: listing.id, updates: Object.keys(parsed.data) },
       ip,
@@ -99,20 +123,30 @@ export async function DELETE(
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+  const organizationId = requireOrgScope(auth.user);
 
   const { id } = await params;
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
 
   try {
-    const listing = await prisma.marketplaceListing.delete({
-      where: { id },
+    const existing = await prisma.marketplaceListing.findFirst({
+      where: { id, organizationId },
+      select: { id: true, batchId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ message: "Listing not found" }, { status: 404 });
+    }
+
+    await prisma.marketplaceListing.deleteMany({
+      where: { id, organizationId },
     });
 
     await logAudit({
       action: "MARKETPLACE_LISTING_DELETED",
+      organizationId,
       userId: auth.user.id,
-      details: { listingId: id, batchId: listing.batchId },
+      details: { listingId: id, batchId: existing.batchId },
       ip,
       userAgent,
     });

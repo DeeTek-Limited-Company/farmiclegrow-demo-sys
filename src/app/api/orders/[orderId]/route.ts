@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const updateSchema = z.object({
   status: z.enum(["PENDING", "NEGOTIATING", "CONFIRMED", "DISPATCHED", "DELIVERED", "COMPLETED", "CANCELLED"]).optional(),
@@ -25,6 +26,7 @@ export async function PATCH(
 ) {
   const auth = await requireApiRole(["admin", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
+  const organizationId = requireOrgScope(auth.user);
 
   const payload = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(payload);
@@ -46,6 +48,14 @@ export async function PATCH(
     if (data.shippingAddress) updateData.shippingAddress = data.shippingAddress;
     if (data.notes) updateData.notes = data.notes;
 
+    const existing = await prisma.order.findFirst({
+      where: { id: orderId, organizationId },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ message: "Order not found" }, { status: 404 });
+    }
+
     const order = await prisma.order.update({
       where: { id: orderId },
       data: updateData,
@@ -62,6 +72,7 @@ export async function PATCH(
       const milestonePromises = order.items.map(item => {
         return prisma.batchMilestone.create({
           data: {
+            organizationId: order.organizationId,
             batchId: item.batchId,
             type: data.milestoneType as any,
             status: "COMPLETED",
@@ -79,6 +90,7 @@ export async function PATCH(
       const batchId = order.items[0].batchId; // For now, handle single batch orders
       await prisma.movementLog.create({
         data: {
+          organizationId: order.organizationId,
           batchId,
           orderId,
           fromLocation: data.movement.fromLocation,
@@ -104,12 +116,13 @@ export async function GET(
 ) {
   const auth = await requireApiRole(["admin", "ops", "buyer"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
+  const organizationId = requireOrgScope(auth.user);
 
   const { orderId } = await params;
 
   try {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, organizationId },
       include: {
         buyer: { select: { fullName: true, email: true } },
         items: { include: { batch: true } },

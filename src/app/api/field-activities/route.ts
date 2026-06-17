@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmpty(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -32,19 +33,22 @@ export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(request.url);
   const farmerId = url.searchParams.get("farmerId");
   const plotId = url.searchParams.get("plotId");
   const productionRecordId = url.searchParams.get("productionRecordId");
 
-  const whereClause: any = {};
+  const whereClause: any = { organizationId };
   if (farmerId) whereClause.farmerId = farmerId;
   if (plotId) whereClause.plotId = plotId;
   if (productionRecordId) whereClause.productionRecordId = productionRecordId;
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -69,6 +73,9 @@ export async function POST(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -80,13 +87,9 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  const plot = await prisma.farmPlot.findUnique({
-    where: { id: data.plotId },
-    select: {
-      id: true,
-      farmerId: true,
-      farmer: { select: { communityId: true } },
-    },
+  const plot = await prisma.farmPlot.findFirst({
+    where: { id: data.plotId, organizationId },
+    include: { farmer: { select: { communityId: true } } },
   });
   if (!plot) return NextResponse.json({ message: "Plot not found." }, { status: 404 });
   if (plot.farmerId !== data.farmerId) {
@@ -94,8 +97,8 @@ export async function POST(request: Request) {
   }
 
   if (data.productionRecordId) {
-    const pr = await prisma.productionRecord.findUnique({
-      where: { id: data.productionRecordId },
+    const pr = await prisma.productionRecord.findFirst({
+      where: { id: data.productionRecordId, organizationId },
       select: { id: true, farmerId: true, plotId: true },
     });
     if (!pr) return NextResponse.json({ message: "Production record not found." }, { status: 404 });
@@ -107,16 +110,20 @@ export async function POST(request: Request) {
     }
   }
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
 
-    const districtId = plot.farmer.communityId
-      ? (await prisma.community.findUnique({ where: { id: plot.farmer.communityId }, select: { districtId: true } }))?.districtId
-      : null;
+    const communityId = plot.farmer.communityId;
+    const districtId = !communityId
+      ? null
+      : (await prisma.community.findFirst({
+          where: { id: communityId, organizationId },
+          select: { districtId: true },
+        }))?.districtId ?? null;
     if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "You are not assigned to this farmer's district." }, { status: 403 });
     }
@@ -125,6 +132,7 @@ export async function POST(request: Request) {
   const created = await prisma.$transaction(async (tx) => {
     const activity = await tx.fieldActivity.create({
       data: {
+        organizationId,
         plotId: data.plotId,
         farmerId: data.farmerId,
         productionRecordId: data.productionRecordId || null,

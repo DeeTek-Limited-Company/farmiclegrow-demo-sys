@@ -1,126 +1,115 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Plus, 
-  Search,
-  Settings,
-  MoreHorizontal,
-  ClipboardList,
-  Package,
-  Bell,
-  Menu,
-  ShieldCheck,
-  TrendingUp,
-  FileText,
-  ShoppingCart,
-  MessageSquare
-} from "lucide-react";
+import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { getPrimaryNavItems, getSecondaryNavItems } from "@/components/dashboard/nav-config";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 export function MobileNav({ userRole }: { userRole?: string }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  
-  const role = userRole || user?.role || "farmer";
-
-  const getNavItems = () => {
-    switch (role) {
-      case "admin":
-        return [
-          { icon: LayoutDashboard, label: "Home", href: "/admin" },
-          { icon: ClipboardList, label: "Review", href: "/admin/submissions" },
-          { icon: Search, label: "Search", href: "/admin/farmers", isCenter: true },
-          { icon: Settings, label: "Users", href: "/admin/users" },
-          { icon: Menu, label: "More", href: "/admin/audit" }, // Could trigger a sheet
-        ];
-      case "agronomist":
-        return [
-          { icon: LayoutDashboard, label: "Home", href: "/agronomist" },
-          { icon: Users, label: "Farmers", href: "/agronomist/farmers" },
-          { icon: Plus, label: "Onboard", href: "/agronomist/onboarding", isCenter: true },
-          { icon: Package, label: "Ops", href: "/agronomist/production" },
-          { icon: Menu, label: "More", href: "/settings" }, // Could trigger a sheet
-        ];
-      case "ops":
-        return [
-          { icon: LayoutDashboard, label: "Home", href: "/ops" },
-          { icon: Search, label: "Reports", href: "/ops/reports" },
-          { icon: FileText, label: "Docs", href: "/admin/documents", isCenter: true },
-          { icon: Settings, label: "Settings", href: "/settings" },
-          { icon: Menu, label: "More", href: "/settings" },
-        ];
-      case "buyer":
-        return [
-          { icon: LayoutDashboard, label: "Home", href: "/buyer" },
-          { icon: ShoppingCart, label: "Market", href: "/buyer/marketplace" },
-          { icon: Search, label: "Trace", href: "/trace", isCenter: true },
-          { icon: Package, label: "Orders", href: "/buyer/orders" },
-          { icon: MessageSquare, label: "Chat", href: "/buyer/chat" },
-        ];
-      case "farmer":
-      default:
-        return [
-          { icon: LayoutDashboard, label: "Home", href: "/farmer" },
-          { icon: TrendingUp, label: "Records", href: "/farmer/production" },
-          { icon: Plus, label: "Log", href: "/farmer/production/new", isCenter: true },
-          { icon: Bell, label: "Alerts", href: "/farmer/notifications" },
-          { icon: Menu, label: "Menu", href: "/settings" },
-        ];
+  const [moreOpen, setMoreOpen] = useState(false);
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => {
+    if (!orgBase) return href;
+    if (href.startsWith("/super-admin") || href.startsWith("/trace") || href.startsWith("/login") || href === "/") {
+      return href;
     }
+    return `${orgBase}${href}`;
   };
 
-  const navItems = getNavItems();
+  const role = userRole || user?.role || "farmer";
+  const primaryItems = useMemo(
+    () =>
+      getPrimaryNavItems(role)
+        .map((item) => ({ ...item, href: withOrg(item.href) }))
+        .slice(0, 4),
+    [role, orgBase],
+  );
+  const moreItems = useMemo(
+    () => [
+      ...getPrimaryNavItems(role).slice(4).map((item) => ({ ...item, href: withOrg(item.href) })),
+      ...getSecondaryNavItems(role).map((item) => ({ ...item, href: withOrg(item.href) })),
+    ],
+    [role, orgBase],
+  );
+  const isItemActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const moreActive = moreItems.some((item) => isItemActive(item.href));
 
   return (
-    <div className="lg:hidden fixed bottom-6 left-0 right-0 z-50 px-6">
-      <nav className="bg-[linear-gradient(180deg,#14532D_0%,#0B2713_100%)] backdrop-blur-xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.35)] rounded-[2.5rem] flex items-center justify-between p-2 h-20 relative">
-        {navItems.map((item, index) => {
-          const isActive = pathname === item.href.split('?')[0];
-          
-          if (item.isCenter) {
+    <>
+      <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 border-t border-border/60 bg-card/95 backdrop-blur-xl supports-[backdrop-filter]:bg-card/80">
+        <nav className="grid h-16 grid-cols-5 gap-1 px-2 pb-[max(env(safe-area-inset-bottom),0px)]" aria-label="Primary navigation">
+          {primaryItems.map((item) => {
+            const isActive = isItemActive(item.href);
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="relative -top-8"
+                className={cn(
+                  "flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold transition-colors",
+                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                )}
               >
-                <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-accent shadow-xl shadow-accent/30 flex items-center justify-center text-accent-foreground border-4 border-[#0B2713] transition-transform active:scale-90 duration-300">
-                    <item.icon className="w-8 h-8" strokeWidth={3} />
-                  </div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-accent mt-2 absolute -bottom-5">
-                    {item.label}
-                  </span>
-                </div>
+                <item.icon className="h-5 w-5 shrink-0" />
+                <span className="truncate">{item.name}</span>
               </Link>
             );
-          }
+          })}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className={cn(
+              "flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold transition-colors",
+              moreActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
+            )}
+            aria-label="Open more navigation"
+            aria-expanded={moreOpen}
+          >
+            <Menu className="h-5 w-5 shrink-0" />
+            <span className="truncate">More</span>
+          </button>
+        </nav>
+      </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex flex-col items-center justify-center transition-all duration-300 px-3 py-2 rounded-2xl min-w-[64px]",
-                isActive ? "text-white" : "text-white/70 hover:text-white"
-              )}
-            >
-              <item.icon className={cn("w-6 h-6 mb-1 transition-transform", isActive && "scale-110")} />
-              <span className={cn(
-                "text-[9px] font-bold uppercase tracking-tighter transition-opacity",
-                isActive ? "opacity-100" : "opacity-60"
-              )}>
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent
+          side="bottom"
+          className="rounded-t-3xl border-border/60 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8"
+        >
+          <div className="sr-only">
+            <SheetTitle>More navigation</SheetTitle>
+            <SheetDescription>Access additional destinations and account actions.</SheetDescription>
+          </div>
+          <div className="space-y-2">
+            {moreItems.map((item) => {
+              const isActive = isItemActive(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMoreOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition-colors",
+                    isActive
+                      ? "border-primary/25 bg-primary/5 text-primary"
+                      : "border-border/60 bg-card text-foreground hover:bg-muted/60",
+                  )}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

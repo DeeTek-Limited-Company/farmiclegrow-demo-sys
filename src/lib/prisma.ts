@@ -17,14 +17,18 @@ function isValidPostgresUrl(value: string | undefined): value is string {
 }
 
 function removeQueryParam(url: string, param: string): string {
-  const u = new URL(url);
-  u.searchParams.delete(param);
-  return u.toString();
+  try {
+    const u = new URL(url);
+    u.searchParams.delete(param);
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 const poolerUrl = process.env.DATABASE_URL_POOLER;
 const directUrl = process.env.DATABASE_URL;
-const connectionString = isValidPostgresUrl(poolerUrl) ? poolerUrl : directUrl;
+const connectionString = isValidPostgresUrl(poolerUrl) ? poolerUrl : isValidPostgresUrl(directUrl) ? directUrl : undefined;
 const isSupabaseUrl = Boolean(
   connectionString && (connectionString.includes("supabase.co") || connectionString.includes("supabase.com")),
 );
@@ -42,7 +46,7 @@ export const prisma: PrismaClient =
   !connectionString
     ? (new Proxy({} as PrismaClient, {
         get() {
-          throw new Error("DATABASE_URL is not set.");
+          throw new Error("DATABASE_URL (or DATABASE_URL_POOLER) is not set or is invalid.");
         },
       }) as PrismaClient)
     : (globalForPrisma.prisma &&
@@ -62,7 +66,8 @@ export const prisma: PrismaClient =
         "movementLog" in globalForPrisma.prisma &&
         "warehouseEntry" in globalForPrisma.prisma &&
         "salesRecord" in globalForPrisma.prisma &&
-        "buyerProfile" in globalForPrisma.prisma
+        "buyerProfile" in globalForPrisma.prisma &&
+        "billingPlan" in globalForPrisma.prisma
       ? globalForPrisma.prisma
       : new PrismaClient({
           adapter: new PrismaPg(

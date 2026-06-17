@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmptyNumeric(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -48,31 +49,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+  if (auth.user.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const farmerId = searchParams.get("farmerId");
 
   // Ownership Filtering
-  let whereClause: any = {};
+  let whereClause: any = { organizationId };
 
-  // Farmers can only see their own records
-  if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findUnique({
-      where: { externalRef: auth.user.id },
-      select: { id: true }
-    });
-    if (!farmer) {
-      return NextResponse.json({ records: [] });
-    }
-    whereClause.farmerId = farmer.id;
-  } else if (farmerId) {
-    // Agronomists/Admins can filter by farmerId
+  if (farmerId) {
     whereClause.farmerId = farmerId;
   }
 
   // Admin/Ops sees all, Agronomist sees their assigned farmers
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -106,6 +104,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+  if (auth.user.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
+
   const payload = await request.json().catch(() => null);
   const parsed = productionSchema.safeParse(payload);
   if (!parsed.success) {
@@ -135,20 +141,18 @@ export async function POST(request: Request) {
   } = parsed.data;
   const resolvedActualHarvestDate = actualHarvestDate ?? harvestDate;
 
-  // Ownership Filtering
-  if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findUnique({
-      where: { externalRef: auth.user.id },
-      select: { id: true },
-    });
-    if (!farmer || farmer.id !== farmerId) {
-      return NextResponse.json({ message: "Unauthorized to create records for this farmer." }, { status: 403 });
-    }
+  const targetFarmer = await prisma.farmer.findFirst({
+    where: { id: farmerId, organizationId },
+    include: { community: { select: { districtId: true } } },
+  });
+
+  if (!targetFarmer) {
+    return NextResponse.json({ message: "Farmer not found." }, { status: 404 });
   }
 
   if (plotId) {
-    const plot = await prisma.farmPlot.findUnique({
-      where: { id: plotId },
+    const plot = await prisma.farmPlot.findFirst({
+      where: { id: plotId, organizationId },
       select: { id: true, farmerId: true },
     });
     if (!plot) {
@@ -161,18 +165,12 @@ export async function POST(request: Request) {
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: auth.user.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
-    const allowed = await prisma.farmer.findFirst({
-      where: {
-        id: farmerId,
-        community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } },
-      },
-      select: { id: true },
-    });
-    if (!allowed) {
+    const districtId = targetFarmer.community?.districtId;
+    if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "You are not assigned to this farmer's district." }, { status: 403 });
     }
   }
@@ -180,6 +178,7 @@ export async function POST(request: Request) {
   try {
     const record = await prisma.$transaction(async (tx) => {
       const baseData: any = {
+        organizationId: targetFarmer.organizationId,
         farmerId,
         plotId: plotId || null,
         farmProfileId: farmProfileId || null,
@@ -221,17 +220,17 @@ export async function POST(request: Request) {
 
       await recomputeFarmerQualityScore(tx, farmerId);
 
-      const farmer = await tx.farmer.findUnique({
-        where: { id: farmerId },
-        select: { externalRef: true, fullName: true },
+      const farmer = await tx.farmer.findFirst({
+        where: { id: farmerId, organizationId: targetFarmer.organizationId },
+        select: { fullName: true },
       });
 
       const adminIds = await tx.userRole.findMany({
-        where: { role: { key: "admin" } },
+        where: { role: { key: "admin" }, user: { organizationId: targetFarmer.organizationId } },
         select: { userId: true },
       });
       const opsIds = await tx.userRole.findMany({
-        where: { role: { key: "ops" } },
+        where: { role: { key: "ops" }, user: { organizationId: targetFarmer.organizationId } },
         select: { userId: true },
       });
 
@@ -239,10 +238,10 @@ export async function POST(request: Request) {
       recipients.add(auth.user.id);
       adminIds.forEach((a) => recipients.add(a.userId));
       opsIds.forEach((o) => recipients.add(o.userId));
-      if (farmer?.externalRef) recipients.add(farmer.externalRef);
 
       await tx.notification.createMany({
         data: Array.from(recipients).map((userId) => ({
+          organizationId: created.organizationId,
           userId,
           type: "SYSTEM",
           title: "Production cycle created",

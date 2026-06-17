@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/lib/auth-context";
 
 type FarmerOption = {
   id: string;
@@ -119,6 +120,9 @@ export function InputsClient({
   context?: InputsContext;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => (orgBase ? `${orgBase}${href}` : href);
   const [inputs, setInputs] = useState<InputRow[]>(initialInputs);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -359,7 +363,7 @@ export function InputsClient({
                     <span className="text-slate-400"> · {i.inputCategory}</span>
                   </CardTitle>
                   <p className="text-slate-500 mt-1 font-medium">
-                    <Link href={`/agronomist/farmers/${i.farmerId}`} className="hover:underline">
+                    <Link href={withOrg(`/agronomist/farmers/${i.farmerId}`)} className="hover:underline">
                       {i.farmer.fullName}
                     </Link>
                     {i.farmer.phone ? ` (${i.farmer.phone})` : ""}

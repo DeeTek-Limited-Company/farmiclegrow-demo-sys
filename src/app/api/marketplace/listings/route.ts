@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const createListingSchema = z.object({
   batchId: z.string().cuid(),
@@ -26,12 +27,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const url = new URL(request.url);
   const status = url.searchParams.get("status") as any;
   const category = url.searchParams.get("category");
   const featured = url.searchParams.get("featured") === "true";
 
-  const whereClause: any = {};
+  const whereClause: any = { organizationId };
   
   // If not admin/ops, only show ACTIVE listings
   if (!auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
@@ -69,6 +72,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
 
@@ -84,23 +89,25 @@ export async function POST(request: Request) {
   const { batchId, ...data } = parsed.data;
 
   // Verify batch exists and isn't already listed
-  const existing = await prisma.marketplaceListing.findUnique({
-    where: { batchId },
-  });
-  if (existing) {
-    return NextResponse.json({ message: "This batch is already listed on the marketplace." }, { status: 409 });
-  }
-
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
+  const batch = await prisma.batch.findFirst({
+    where: { id: batchId, organizationId },
   });
   if (!batch) {
     return NextResponse.json({ message: "Batch not found." }, { status: 404 });
   }
 
+  const existing = await prisma.marketplaceListing.findFirst({
+    where: { batchId, organizationId: batch.organizationId },
+    select: { id: true },
+  });
+  if (existing) {
+    return NextResponse.json({ message: "This batch is already listed on the marketplace." }, { status: 409 });
+  }
+
   try {
     const listing = await prisma.marketplaceListing.create({
       data: {
+        organizationId: batch.organizationId,
         batchId,
         ...data,
       },
@@ -111,6 +118,7 @@ export async function POST(request: Request) {
 
     await logAudit({
       action: "MARKETPLACE_LISTING_CREATED",
+      organizationId,
       userId: auth.user.id,
       details: { listingId: listing.id, batchId: listing.batchId },
       ip,

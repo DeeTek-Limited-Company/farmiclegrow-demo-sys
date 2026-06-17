@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const createSchema = z.object({
   name: z.string().min(2, "District name is required"),
@@ -14,18 +15,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+
   const url = new URL(request.url);
   const regionId = url.searchParams.get("regionId") || undefined;
 
-  let whereClause: any = {};
+  let whereClause: any = { organizationId };
 
   if (regionId) {
     whereClause.regionId = regionId;
   }
 
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: actor.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const allowedDistrictIds = assignments.map((a) => a.districtId);
@@ -53,6 +60,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -60,10 +69,9 @@ export async function POST(request: Request) {
   }
 
   const district = await prisma.district.create({
-    data: { name: parsed.data.name.trim(), regionId: parsed.data.regionId },
+    data: { organizationId, name: parsed.data.name.trim(), regionId: parsed.data.regionId },
     include: { region: true },
   });
 
   return NextResponse.json({ district }, { status: 201 });
 }
-

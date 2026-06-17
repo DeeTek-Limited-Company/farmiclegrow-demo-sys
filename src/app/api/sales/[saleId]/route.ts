@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ saleId: string }>;
@@ -25,11 +26,11 @@ const updateSchema = z.object({
   paymentStatus: z.string().trim().min(1).optional().nullable(),
 });
 
-async function getAuthorizedSale(authUser: { id: string; roles: string[] }, saleId: string) {
-  const whereClause: any = { id: saleId };
+async function getAuthorizedSale(authUser: { id: string; roles: string[]; organizationId: string }, saleId: string) {
+  const whereClause: any = { id: saleId, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -48,8 +49,10 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { saleId } = await context.params;
-  const sale = await getAuthorizedSale(auth.user, saleId);
+  const sale = await getAuthorizedSale({ id: auth.user.id, roles: auth.user.roles, organizationId }, saleId);
   if (!sale) return NextResponse.json({ message: "Sale not found or unauthorized." }, { status: 404 });
 
   return NextResponse.json({ sale });
@@ -59,8 +62,10 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { saleId } = await context.params;
-  const existing = await getAuthorizedSale(auth.user, saleId);
+  const existing = await getAuthorizedSale({ id: auth.user.id, roles: auth.user.roles, organizationId }, saleId);
   if (!existing) return NextResponse.json({ message: "Sale not found or unauthorized." }, { status: 404 });
 
   const payload = await request.json().catch(() => null);
@@ -74,7 +79,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const data = parsed.data;
   const updated = await prisma.salesRecord.update({
-    where: { id: saleId },
+    where: { id: saleId, organizationId },
     data: {
       buyerName: data.buyerName ?? undefined,
       buyerType: data.buyerType ?? undefined,
@@ -94,11 +99,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { saleId } = await context.params;
-  const existing = await getAuthorizedSale(auth.user, saleId);
+  const existing = await getAuthorizedSale({ id: auth.user.id, roles: auth.user.roles, organizationId }, saleId);
   if (!existing) return NextResponse.json({ message: "Sale not found or unauthorized." }, { status: 404 });
 
-  await prisma.salesRecord.delete({ where: { id: saleId } });
+  await prisma.salesRecord.delete({ 
+    where: { id: saleId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

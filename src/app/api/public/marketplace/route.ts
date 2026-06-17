@@ -1,22 +1,41 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { getClientIp, publicOptions, publicRateLimited, withPublicCors } from "@/lib/public/http";
 
-function withCors(response: NextResponse) {
-  response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-  return response;
+export async function OPTIONS(request: Request) {
+  return publicOptions(request);
 }
 
-export async function OPTIONS() {
-  return withCors(new NextResponse(null, { status: 204 }));
-}
+export async function GET(request: Request) {
+  const ip = getClientIp(request);
+  const { success, remaining, reset } = rateLimit(`pub-mkt-${ip}`, 30, 60000);
 
-export async function GET() {
+  if (!success) {
+    return publicRateLimited(request, { limit: 30, remaining, reset });
+  }
+
   try {
+    const url = new URL(request.url);
+    const orgSlug = url.searchParams.get("org");
+
+    if (!orgSlug) {
+      return withPublicCors(request, NextResponse.json({ listings: [] }));
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { slug: orgSlug },
+      select: { id: true },
+    });
+
+    if (!organization) {
+      return withPublicCors(request, NextResponse.json({ listings: [] }));
+    }
+
     const listings = await prisma.marketplaceListing.findMany({
       where: {
         status: "ACTIVE",
+        organizationId: organization.id,
       },
       include: {
         batch: {
@@ -41,7 +60,8 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return withCors(
+    return withPublicCors(
+      request,
       NextResponse.json({
         listings: listings.map(l => ({
           id: l.id,
@@ -72,8 +92,6 @@ export async function GET() {
     );
   } catch (error: any) {
     console.error("Error fetching marketplace listings:", error);
-    return withCors(
-      NextResponse.json({ message: "Internal server error" }, { status: 500 })
-    );
+    return withPublicCors(request, NextResponse.json({ message: "Internal server error" }, { status: 500 }));
   }
 }

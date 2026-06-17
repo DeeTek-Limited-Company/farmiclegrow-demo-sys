@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 export function SubmissionDecisionPanel({
@@ -27,7 +26,6 @@ export function SubmissionDecisionPanel({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState(defaultRejectReason ?? "");
-  const [overrideBlockers, setOverrideBlockers] = useState(false);
 
   const isPending = status === "PENDING_REVIEW";
   const hasBlockers = approvalBlockers.length > 0;
@@ -54,14 +52,8 @@ export function SubmissionDecisionPanel({
       return;
     }
     if (action === "APPROVED" && hasBlockers) {
-      if (!overrideBlockers) {
-        toast.error("Resolve blockers or use override to approve");
-        return;
-      }
-      if (!reason.trim()) {
-        toast.error("Override note required");
-        return;
-      }
+      toast.error("Resolve onboarding blockers before approval");
+      return;
     }
 
     setBusy(true);
@@ -115,16 +107,8 @@ export function SubmissionDecisionPanel({
               </Badge>
             ))}
           </div>
-          <div className="flex items-center gap-3">
-            <Checkbox
-              id="override"
-              checked={overrideBlockers}
-              onCheckedChange={(v) => setOverrideBlockers(Boolean(v))}
-              disabled={busy}
-            />
-            <Label htmlFor="override" className="text-xs font-bold text-amber-800">
-              Override blockers (requires note)
-            </Label>
+          <div className="text-xs font-bold text-amber-800">
+            Resolve these blockers before approving the submission.
           </div>
         </div>
       ) : null}
@@ -136,7 +120,7 @@ export function SubmissionDecisionPanel({
         <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={hasBlockers ? "Required only if rejecting or overriding blockers..." : "Provide feedback if rejecting..."}
+          placeholder="Provide feedback if rejecting..."
           className="min-h-[90px] rounded-2xl bg-slate-50 border-slate-200 font-bold"
           disabled={!isPending || busy}
         />
@@ -145,7 +129,7 @@ export function SubmissionDecisionPanel({
       <div className="flex gap-3">
         <Button
           className="flex-1 rounded-2xl font-black h-12 bg-emerald-600 hover:bg-emerald-700"
-          disabled={!isPending || busy || (hasBlockers && (!overrideBlockers || !reason.trim()))}
+          disabled={!isPending || busy || hasBlockers}
           onClick={() => decide("APPROVED")}
         >
           {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}

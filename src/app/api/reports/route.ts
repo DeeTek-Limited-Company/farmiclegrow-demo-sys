@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function csvEscape(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -33,6 +34,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind") || "";
   const format = (url.searchParams.get("format") || "csv").toLowerCase();
@@ -40,17 +44,18 @@ export async function GET(request: Request) {
   const today = new Date().toISOString().slice(0, 10);
 
   const districtIds =
-    auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")
+    user.roles.includes("agronomist") && !user.roles.includes("admin") && !user.roles.includes("ops")
       ? (await prisma.agronomistDistrict.findMany({
-          where: { agronomistId: auth.user.id },
+          where: { agronomistId: user.id, organizationId },
           select: { districtId: true },
         })).map((a) => a.districtId)
       : null;
 
-  function withDistrictFilter(where: any, entityPath: (ids: string[]) => any) {
-    if (!districtIds) return where;
+  function withTenantAndDistrictFilter(where: any, entityPath: (ids: string[]) => any) {
+    const baseWhere = { ...where, organizationId };
+    if (!districtIds) return baseWhere;
     const ids = districtIds.length ? districtIds : ["__none__"];
-    return { ...where, ...entityPath(ids) };
+    return { ...baseWhere, ...entityPath(ids) };
   }
 
   async function respond(rows: Array<Record<string, unknown>>, fileBaseName: string) {
@@ -83,7 +88,7 @@ export async function GET(request: Request) {
 
   if (kind === "farmers") {
     const farmers = await prisma.farmer.findMany({
-      where: withDistrictFilter({}, (ids) => ({ community: { districtId: { in: ids } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ community: { districtId: { in: ids } } })),
       include: {
         community: { include: { district: { include: { region: true } } } },
         farmProfiles: { include: { locations: true }, orderBy: { createdAt: "desc" }, take: 1 },
@@ -137,7 +142,7 @@ export async function GET(request: Request) {
 
   if (kind === "production") {
     const records = await prisma.productionRecord.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
       include: { farmer: true },
       orderBy: { createdAt: "desc" },
       take: 10000,
@@ -172,7 +177,7 @@ export async function GET(request: Request) {
 
   if (kind === "batches") {
     const batches = await prisma.batch.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
       include: { farmer: true },
       orderBy: { createdAt: "desc" },
       take: 10000,
@@ -195,7 +200,7 @@ export async function GET(request: Request) {
 
   if (kind === "inputs") {
     const inputs = await prisma.inputTraceability.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
       include: { farmer: true, plot: true },
       orderBy: [{ applicationDate: "desc" }, { createdAt: "desc" }],
       take: 20000,
@@ -226,7 +231,7 @@ export async function GET(request: Request) {
 
   if (kind === "field-activities") {
     const activities = await prisma.fieldActivity.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
       include: { farmer: true, plot: true, productionRecord: true },
       orderBy: [{ activityDate: "desc" }, { createdAt: "desc" }],
       take: 20000,
@@ -259,7 +264,7 @@ export async function GET(request: Request) {
 
   if (kind === "harvest-quality") {
     const harvests = await prisma.harvestRecord.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmer: { community: { districtId: { in: ids } } } })),
       include: {
         farmer: true,
         plot: true,
@@ -309,7 +314,7 @@ export async function GET(request: Request) {
 
   if (kind === "location-validation") {
     const locations = await prisma.farmLocation.findMany({
-      where: withDistrictFilter({}, (ids) => ({ farmProfile: { farmer: { community: { districtId: { in: ids } } } } })),
+      where: withTenantAndDistrictFilter({}, (ids) => ({ farmProfile: { farmer: { community: { districtId: { in: ids } } } } })),
       include: {
         farmProfile: {
           include: {

@@ -29,6 +29,7 @@ import { OrderChat } from "@/components/orders/order-chat";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TraceQrModal } from "@/components/trace/trace-qr-modal";
+import { buildOrgTracePath } from "@/lib/trace/urls";
 
 export function BuyerOrdersClient({ 
   initialOrders,
@@ -39,10 +40,11 @@ export function BuyerOrdersClient({
 }) {
   const [orders, setOrders] = useState(initialOrders);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [qrModal, setQrModal] = useState<{ isOpen: boolean; batchId: string; cropName: string; orderId?: string }>({
+  const [qrModal, setQrModal] = useState<{ isOpen: boolean; batchId: string; cropName: string; orgSlug: string; orderId?: string }>({
     isOpen: false,
     batchId: "",
     cropName: "",
+    orgSlug: "",
     orderId: ""
   });
   const [query, setQuery] = useState("");
@@ -183,7 +185,13 @@ export function BuyerOrdersClient({
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <Button asChild variant="outline" size="sm" className="rounded-xl border-emerald-100 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 transition-all font-bold text-[10px] uppercase tracking-widest h-8">
-                                  <Link href={`/trace/${item.batchId || item.batch?.batchId}?orderId=${order.id}`} target="_blank">
+                                  <Link
+                                    href={buildOrgTracePath(
+                                      item.batch?.organization?.slug || order.organization?.slug || "",
+                                      item.batchId || item.batch?.batchId,
+                                    )}
+                                    target="_blank"
+                                  >
                                     <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
                                     Quality Passport
                                   </Link>
@@ -196,6 +204,7 @@ export function BuyerOrdersClient({
                                     isOpen: true,
                                     batchId: item.batchId || item.batch?.batchId,
                                     cropName: item.batch?.crop || "Produce",
+                                    orgSlug: item.batch?.organization?.slug || order.organization?.slug || "",
                                     orderId: order.id
                                   })}
                                 >
@@ -258,6 +267,7 @@ export function BuyerOrdersClient({
         onClose={() => setQrModal({ ...qrModal, isOpen: false })}
         batchId={qrModal.batchId}
         cropName={qrModal.cropName}
+        orgSlug={qrModal.orgSlug}
         orderId={qrModal.orderId}
       />
     </div>

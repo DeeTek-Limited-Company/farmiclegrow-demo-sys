@@ -5,6 +5,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "FarmicleGrow Platform",
   description: "FarmicleGrow Phase 1 platform foundation",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

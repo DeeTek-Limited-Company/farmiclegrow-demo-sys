@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { cursorFindManyArgs, parseCursorPageParams, toCursorPage } from "@/lib/pagination/cursor";
+import { checkPlanLimit } from "@/lib/billing/limits";
+import { buildOrgTracePath } from "@/lib/trace/urls";
 
 const createBatchSchema = z.object({
   productionRecordId: z.string().cuid(),
@@ -31,33 +35,48 @@ async function generateBatchId(year: number, cropType: string, attempt: number) 
   return `${prefix}${formatSequence(seq)}`;
 }
 
-export async function GET() {
+async function generateBatchIdForOrg(year: number, cropType: string, organizationId: string, attempt: number) {
+  const cropCode = toCropCode(cropType);
+  const prefix = `FG-${year}-${cropCode}-`;
+  const existingCount = await prisma.batch.count({
+    where: { organizationId, batchId: { startsWith: prefix } },
+  });
+  const seq = existingCount + 1 + attempt;
+  return `${prefix}${formatSequence(seq)}`;
+}
+
+export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
-  const whereClause: any = {};
-  if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
+  const { limit, cursor } = parseCursorPageParams(request, { defaultLimit: 200, maxLimit: 500 });
+
+  const whereClause: any = { organizationId };
+  if (actor.roles.includes("agronomist") && !actor.roles.includes("admin") && !actor.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     whereClause.farmer = { community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } } };
   }
 
-  const batches = await prisma.batch.findMany({
+  const batchesWithExtra = await prisma.batch.findMany({
     where: whereClause,
     include: {
       farmer: true,
       productionRecord: true,
     },
-    orderBy: { createdAt: "desc" },
-    take: 200,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...cursorFindManyArgs({ limit, cursor }),
   });
 
-  return NextResponse.json({ batches });
+  const { page: batches, pageInfo } = toCursorPage(batchesWithExtra, limit);
+  return NextResponse.json({ batches, pageInfo });
 }
 
 export async function POST(request: Request) {
@@ -65,6 +84,9 @@ export async function POST(request: Request) {
   if (!auth.ok) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
+
+  const actor = auth.user;
+  const organizationId = requireOrgScope(actor);
 
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
@@ -80,8 +102,22 @@ export async function POST(request: Request) {
 
   const { productionRecordId, quantityTon, harvestDate } = parsed.data;
 
-  const record = await prisma.productionRecord.findUnique({
-    where: { id: productionRecordId },
+  const batchesLimit = await checkPlanLimit(organizationId, "batches");
+  if (!batchesLimit.ok) {
+    await logAudit({
+      action: "BILLING_LIMIT_BLOCKED",
+      organizationId,
+      userId: actor.id,
+      details: { resource: "batches", reason: batchesLimit.reason, current: (batchesLimit as any).current, limit: (batchesLimit as any).limit },
+      ip,
+      userAgent,
+      status: "FAILURE",
+    });
+    return NextResponse.json({ message: "Batch limit reached for this subscription plan." }, { status: 403 });
+  }
+
+  const record = await prisma.productionRecord.findFirst({
+    where: { id: productionRecordId, organizationId },
     include: {
       farmer: {
         include: { community: true },
@@ -95,12 +131,12 @@ export async function POST(request: Request) {
   }
 
   if (
-    auth.user.roles.includes("agronomist") &&
-    !auth.user.roles.includes("admin") &&
-    !auth.user.roles.includes("ops")
+    actor.roles.includes("agronomist") &&
+    !actor.roles.includes("admin") &&
+    !actor.roles.includes("ops")
   ) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { agronomistId: actor.id, organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -132,7 +168,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingBatched = record.batches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
+  const existingBatched = record.batches.reduce((sum: number, b) => sum + Number(b.quantity || 0), 0);
   const plannedHarvest = record.quantityTon ? Number(record.quantityTon) : null;
   if (plannedHarvest !== null && quantityTon > plannedHarvest - existingBatched + 1e-9) {
     return NextResponse.json(
@@ -144,19 +180,29 @@ export async function POST(request: Request) {
   const year = resolvedHarvestDate.getFullYear();
 
   for (let attempt = 0; attempt < 10; attempt++) {
-    const batchId = await generateBatchId(year, record.cropType, attempt);
+    const batchId = await generateBatchIdForOrg(year, record.cropType, record.organizationId, attempt);
 
     try {
       const batch = await prisma.$transaction(async (tx) => {
+        const organization = await tx.organization.findUnique({
+          where: { id: record.organizationId },
+          select: { slug: true },
+        });
+
+        if (!organization) {
+          throw new Error("Organization not found for batch creation.");
+        }
+
         const created = await tx.batch.create({
           data: {
+            organizationId: record.organizationId,
             batchId,
             farmerId: record.farmerId,
             productionRecordId: record.id,
             crop: record.cropType,
             quantity: quantityTon,
             harvestDate: resolvedHarvestDate,
-            qrCode: `/trace/${batchId}`,
+            qrCode: buildOrgTracePath(organization.slug, batchId),
           },
           include: {
             farmer: true,
@@ -167,22 +213,22 @@ export async function POST(request: Request) {
         await recomputeFarmerQualityScore(tx, record.farmerId);
 
         const adminIds = await tx.userRole.findMany({
-          where: { role: { key: "admin" } },
+          where: { role: { key: "admin" }, user: { organizationId: record.organizationId } },
           select: { userId: true },
         });
         const opsIds = await tx.userRole.findMany({
-          where: { role: { key: "ops" } },
+          where: { role: { key: "ops" }, user: { organizationId: record.organizationId } },
           select: { userId: true },
         });
 
         const recipients = new Set<string>();
-        recipients.add(auth.user.id);
+        recipients.add(actor.id);
         adminIds.forEach((a) => recipients.add(a.userId));
         opsIds.forEach((o) => recipients.add(o.userId));
-        if (created.farmer.externalRef) recipients.add(created.farmer.externalRef);
 
         await tx.notification.createMany({
           data: Array.from(recipients).map((userId) => ({
+            organizationId: record.organizationId,
             userId,
             type: "SYSTEM",
             title: "New batch created",
@@ -200,7 +246,8 @@ export async function POST(request: Request) {
 
       await logAudit({
         action: "BATCH_CREATED",
-        userId: auth.user.id,
+        organizationId,
+        userId: actor.id,
         details: {
           batchId: batch.batchId,
           batchDbId: batch.id,
@@ -219,7 +266,8 @@ export async function POST(request: Request) {
         console.error(error);
         await logAudit({
           action: "BATCH_CREATED",
-          userId: auth.user.id,
+          organizationId,
+          userId: actor.id,
           details: {
             productionRecordId,
             error: error?.message || String(error),

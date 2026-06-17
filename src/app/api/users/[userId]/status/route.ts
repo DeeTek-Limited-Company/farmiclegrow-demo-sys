@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { revokeSessionsForUser } from "@/lib/auth/session-db";
 
 const statusSchema = z.object({
   isActive: z.boolean(),
@@ -18,6 +20,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const organizationId = requireOrgScope(auth.user);
+
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   const userAgent = request.headers.get("user-agent") || undefined;
 
@@ -29,6 +33,16 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { userId } = await context.params;
 
+  // Verify target user belongs to the same organization
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, organizationId: true }
+  });
+
+  if (!targetUser || targetUser.organizationId !== organizationId) {
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
+  }
+
   if (userId === auth.user.id) {
     return NextResponse.json({ message: "You cannot deactivate your own account." }, { status: 400 });
   }
@@ -39,8 +53,13 @@ export async function PATCH(request: Request, context: RouteContext) {
       data: { isActive: parsed.data.isActive },
     });
 
+    if (!user.isActive) {
+      await revokeSessionsForUser(user.id);
+    }
+
     await logAudit({
       action: "USER_STATUS_TOGGLED",
+      organizationId,
       userId: auth.user.id,
       details: { targetUserId: user.id, isActive: user.isActive },
       ip,
@@ -53,6 +72,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     console.error(error);
     await logAudit({
       action: "USER_STATUS_TOGGLED",
+      organizationId,
       userId: auth.user.id,
       details: { targetUserId: userId, isActive: parsed.data.isActive, error: String(error) },
       ip,

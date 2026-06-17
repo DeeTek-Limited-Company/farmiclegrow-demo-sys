@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { buildInternalOrgTracePath } from "@/lib/trace/urls";
 
 type BatchOption = {
   id: string;
@@ -94,6 +95,8 @@ export function WarehousingClient({
   initialEntries: EntryRow[];
   initialHarvests: HarvestOption[];
 }) {
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = String(params.orgSlug || "");
   const router = useRouter();
   const [entries, setEntries] = useState<EntryRow[]>(initialEntries);
   const [q, setQ] = useState("");
@@ -273,7 +276,7 @@ export function WarehousingClient({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <CardTitle className="text-xl font-black tracking-tight truncate">
-                    <Link href={`/trace/${e.batch.batchId}`} className="hover:underline">
+                    <Link href={buildInternalOrgTracePath(orgSlug, e.batch.batchId)} className="hover:underline">
                       {e.batch.batchId}
                     </Link>
                     <span className="text-slate-400"> · {e.warehouseName}</span>
@@ -445,4 +448,3 @@ export function WarehousingClient({
     </div>
   );
 }
-

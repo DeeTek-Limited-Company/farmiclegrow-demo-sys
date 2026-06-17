@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Store, ImagePlus, X, Tag, Upload } from "lucide-react";
+
+const STORAGE_KEY_PREFIX = "farmiclegrow_listing_draft_";
 
 type Batch = {
   id: string;
@@ -42,6 +44,69 @@ export function ListingCreateForm({ batch }: { batch: Batch }) {
   const [tagInput, setTagInput] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">("ACTIVE");
+
+  const storageKey = `${STORAGE_KEY_PREFIX}${batch.id}`;
+
+  // Load draft on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const { data, timestamp } = JSON.parse(saved);
+        // Only offer to resume if it's less than 48 hours old
+        const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+
+        if (isRecent && data) {
+          toast("Found an unfinished listing draft", {
+            description: "Would you like to resume where you left off?",
+            action: {
+              label: "Resume",
+              onClick: () => {
+                if (data.title) setTitle(data.title);
+                if (data.description) setDescription(data.description);
+                if (data.price) setPrice(data.price);
+                if (data.currency) setCurrency(data.currency);
+                if (data.category) setCategory(data.category);
+                if (data.unit) setUnit(data.unit);
+                if (data.images) setImages(data.images);
+                if (data.tags) setTags(data.tags);
+                if (data.status) setStatus(data.status);
+                toast.success("Draft restored!");
+              },
+            },
+            duration: 10000,
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse listing draft", e);
+      }
+    }
+  }, [storageKey]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (!isLoading) {
+      const draft = {
+        data: {
+          title,
+          description,
+          price,
+          currency,
+          category,
+          unit,
+          images,
+          tags,
+          status,
+        },
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(storageKey, JSON.stringify(draft));
+    }
+  }, [title, description, price, currency, category, unit, images, tags, status, isLoading, storageKey]);
+
+  const clearDraft = () => {
+    localStorage.removeItem(storageKey);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,6 +169,7 @@ export function ListingCreateForm({ batch }: { batch: Batch }) {
         throw new Error(data.message || "Failed to create listing.");
       }
 
+      clearDraft();
       toast.success("Listing created as DRAFT");
       router.push("/admin/inventory");
       router.refresh();

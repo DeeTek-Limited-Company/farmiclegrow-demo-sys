@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 function preprocessEmpty(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -28,15 +29,22 @@ export async function GET(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const url = new URL(request.url);
   const harvestId = url.searchParams.get("harvestId");
 
-  const whereClause: any = {};
+  const whereClause: any = {
+    organizationId,
+  };
   if (harvestId) whereClause.harvestId = harvestId;
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: auth.user.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -64,6 +72,8 @@ export async function POST(request: Request) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const payload = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(payload);
   if (!parsed.success) {
@@ -77,18 +87,27 @@ export async function POST(request: Request) {
 
   const harvest = await prisma.harvestRecord.findUnique({
     where: { id: data.harvestId },
-    select: { id: true, farmerId: true, farmer: { select: { communityId: true } } },
+    select: { id: true, farmerId: true, organizationId: true, farmer: { select: { communityId: true } } },
   });
   if (!harvest) return NextResponse.json({ message: "Harvest record not found." }, { status: 404 });
+  if (harvest.organizationId !== organizationId) {
+    return NextResponse.json({ message: "Access denied." }, { status: 403 });
+  }
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: auth.user.id },
+      where: { 
+        agronomistId: auth.user.id,
+        organizationId
+      },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
     const districtId = harvest.farmer.communityId
-      ? (await prisma.community.findUnique({ where: { id: harvest.farmer.communityId }, select: { districtId: true } }))?.districtId
+      ? (await prisma.community.findUnique({ 
+          where: { id: harvest.farmer.communityId, organizationId }, 
+          select: { districtId: true } 
+        }))?.districtId
       : null;
     if (!districtId || !districtIds.includes(districtId)) {
       return NextResponse.json({ message: "You are not assigned to this farmer's district." }, { status: 403 });
@@ -97,6 +116,7 @@ export async function POST(request: Request) {
 
   const created = await prisma.qualityTest.create({
     data: {
+      organizationId: harvest.organizationId,
       harvestId: data.harvestId,
       dateTested: new Date(data.dateTested),
       moisturePct: data.moisturePct ?? null,

@@ -1,236 +1,100 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import {
-  LayoutDashboard,
-  Users,
-  CheckCircle,
-  Settings,
-  ShieldCheck,
-  FileText,
-  PlusCircle,
-  TrendingUp,
-  Package,
-  MapPin,
-  Map,
-  Bell,
-  User,
-  LogOut,
-  Sprout,
-  ClipboardList,
-  Wheat,
-  Truck,
-  Warehouse,
-  Handshake,
-  ShoppingCart,
-  MessageSquare,
-  Search
-} from 'lucide-react';
-import { useState } from 'react';
+import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getDashboardNavGroups, getPrimaryNavItems } from '@/components/dashboard/nav-config';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 
-interface NavItem {
-  name: string;
-  href: string;
-  icon: React.ReactNode;
-}
-
-interface NavGroup {
-  group: string;
-  items: NavItem[];
-}
-
 export function Sidebar({
   userRole = 'farmer',
-  isMobile = false
+  isMobile = false,
+  mode = 'desktop',
 }: {
   userRole?: string;
   isMobile?: boolean;
+  mode?: 'desktop' | 'tablet' | 'mobile';
 }) {
   const pathname = usePathname();
-  const { logout } = useAuth();
-
-  const getNavGroups = (): NavGroup[] => {
-    switch (userRole) {
-      case 'admin':
-        return [
-          {
-            group: 'Control Center',
-            items: [
-              { name: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="w-5 h-5" /> },
-              { name: 'Farmers', href: '/admin/farmers', icon: <Users className="w-5 h-5" /> },
-              { name: 'Order Pipeline', href: '/admin/orders', icon: <ShoppingCart className="w-5 h-5" /> },
-              { name: 'Review Queue', href: '/admin/submissions', icon: <CheckCircle className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Management',
-            items: [
-              { name: 'User Directory', href: '/admin/users', icon: <Settings className="w-5 h-5" /> },
-              { name: 'Marketplace', href: '/admin/marketplace', icon: <ShoppingCart className="w-5 h-5" /> },
-              { name: 'Market Inventory', href: '/admin/inventory', icon: <Warehouse className="w-5 h-5" /> },
-              { name: 'Agronomist Assignment', href: '/admin/assignments', icon: <ClipboardList className="w-5 h-5" /> },
-              { name: 'Document Review', href: '/admin/documents', icon: <FileText className="w-5 h-5" /> },
-              { name: 'Locations', href: '/admin/locations', icon: <MapPin className="w-5 h-5" /> },
-              { name: 'Audit Trails', href: '/admin/audit', icon: <ShieldCheck className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Intelligence',
-            items: [
-              { name: 'Platform Reports', href: '/admin/reports', icon: <FileText className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Account',
-            items: [
-              { name: 'Notifications', href: '/admin/notifications', icon: <Bell className="w-5 h-5" /> },
-              { name: 'Global Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> },
-            ]
-          }
-        ];
-      case 'agronomist':
-        return [
-          {
-            group: 'Field Desk',
-            items: [
-              { name: 'Overview', href: '/agronomist', icon: <LayoutDashboard className="w-5 h-5" /> },
-              { name: 'My Districts', href: '/agronomist/districts', icon: <MapPin className="w-5 h-5" /> },
-              { name: 'Communities', href: '/agronomist/communities', icon: <MapPin className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Farmers',
-            items: [
-              { name: 'All Farmers', href: '/agronomist/farmers', icon: <Users className="w-5 h-5" /> },
-              { name: 'Register Farmer', href: '/agronomist/onboarding', icon: <PlusCircle className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Farm Setup',
-            items: [
-              { name: 'Farm Profiles', href: '/agronomist/farm-profiles', icon: <Sprout className="w-5 h-5" /> },
-              { name: 'Plots', href: '/agronomist/plots', icon: <Map className="w-5 h-5" /> },
-              { name: 'Farm Locations', href: '/agronomist/locations', icon: <MapPin className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Production',
-            items: [
-              { name: 'Production Cycles', href: '/agronomist/production', icon: <TrendingUp className="w-5 h-5" /> },
-              { name: 'Quality Testing', href: '/agronomist/quality-testing', icon: <ShieldCheck className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Traceability',
-            items: [
-              { name: 'Batches', href: '/agronomist/batches', icon: <Package className="w-5 h-5" /> },
-              { name: 'Internal Movements', href: '/agronomist/movements', icon: <Truck className="w-5 h-5" /> },
-              { name: 'Warehouse Entry', href: '/agronomist/warehousing', icon: <Warehouse className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'System',
-            items: [
-              { name: 'Notifications', href: '/agronomist/notifications', icon: <Bell className="w-5 h-5" /> },
-              { name: 'Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> },
-            ]
-          }
-        ];
-      case 'ops':
-        return [
-          {
-            group: 'Operations',
-            items: [
-              { name: 'Dashboard', href: '/ops', icon: <LayoutDashboard className="w-5 h-5" /> },
-              { name: 'Reports', href: '/ops/reports', icon: <FileText className="w-5 h-5" /> },
-              { name: 'Document Review', href: '/admin/documents', icon: <FileText className="w-5 h-5" /> },
-            ],
-          },
-          {
-            group: 'Account',
-            items: [
-              { name: 'Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> },
-            ],
-          },
-        ];
-      case 'buyer':
-        return [
-          {
-            group: 'Buyer Hub',
-            items: [
-              { name: 'Dashboard', href: '/buyer', icon: <LayoutDashboard className="w-5 h-5" /> },
-              { name: 'Marketplace', href: '/buyer/marketplace', icon: <ShoppingCart className="w-5 h-5" /> },
-              { name: 'Orders', href: '/buyer/orders', icon: <Package className="w-5 h-5" /> },
-              { name: 'Trace Lookup', href: '/trace', icon: <Search className="w-5 h-5" /> },
-            ],
-          },
-          {
-            group: 'Messages',
-            items: [
-              { name: 'Chat', href: '/buyer/chat', icon: <MessageSquare className="w-5 h-5" /> },
-              { name: 'Notifications', href: '/buyer/notifications', icon: <Bell className="w-5 h-5" /> },
-            ],
-          },
-          {
-            group: 'Account',
-            items: [{ name: 'Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> }],
-          },
-        ];
-      case 'farmer':
-      default:
-        return [
-          {
-            group: 'My Farm',
-            items: [
-              { name: 'Dashboard', href: '/farmer', icon: <LayoutDashboard className="w-5 h-5" /> },
-              { name: 'Production Log', href: '/farmer/production', icon: <ClipboardList className="w-5 h-5" /> },
-              { name: 'Farm Sites', href: '/farmer/farms', icon: <Sprout className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Personal',
-            items: [
-              { name: 'Inbox', href: '/farmer/notifications', icon: <Bell className="w-5 h-5" /> },
-              { name: 'Profile Settings', href: '/farmer/profile', icon: <User className="w-5 h-5" /> },
-            ]
-          },
-          {
-            group: 'Settings',
-            items: [
-              { name: 'Account Settings', href: '/settings', icon: <Settings className="w-5 h-5" /> },
-            ]
-          }
-        ];
+  const { logout, user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => {
+    if (href.startsWith('/super-admin')) {
+      return href;
     }
+    return orgBase ? `${orgBase}${href}` : href;
   };
-
-  const groups = getNavGroups();
+  const groups = getDashboardNavGroups(userRole).map((group) => ({
+    ...group,
+    items: group.items.map((item) => ({ ...item, href: withOrg(item.href) })),
+  }));
 
   const isActive = (href: string) => {
-    if (href === '/agronomist' || href === '/admin' || href === '/farmer' || href === '/buyer') {
-      return pathname === href;
-    }
-    return pathname.startsWith(href);
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
+
+  if (mode === 'tablet') {
+    return (
+      <aside className="hidden w-20 flex-col border-r border-border/60 bg-sidebar/90 px-3 py-4 text-sidebar-foreground backdrop-blur-xl md:flex lg:hidden">
+        <div className="mb-6 flex items-center justify-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-1 shadow-sm ring-1 ring-border/40">
+            <Image
+              src="/logo.png"
+              alt="FarmicleGrow Logo"
+              width={40}
+              height={40}
+              className="object-contain"
+              priority
+            />
+          </div>
+        </div>
+
+        <nav className="flex-1 space-y-2" aria-label="Tablet Navigation">
+          {getPrimaryNavItems(userRole).slice(0, 6).map((item) => {
+            const resolvedHref = withOrg(item.href);
+            const active = pathname === resolvedHref;
+
+            return (
+              <Link
+                key={resolvedHref}
+                href={resolvedHref}
+                aria-label={item.name}
+                title={item.name}
+                className={cn(
+                  "flex h-12 items-center justify-center rounded-2xl border text-[#E6EFE8] transition-colors",
+                  active
+                    ? "border-accent/40 bg-[#FFF4D6] text-[#14532D]"
+                    : "border-transparent hover:border-white/10 hover:bg-white/6 hover:text-white",
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="sr-only">{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+    );
+  }
+
+  const isDrawerMode = isMobile || mode === 'mobile';
 
   return (
     <aside className={cn(
       "flex flex-col border-r border-sidebar-border text-sidebar-foreground h-full overflow-hidden transition-all duration-300 bg-[linear-gradient(180deg,#14532D_0%,#0B2713_100%)]",
-      isMobile ? "w-full" : "w-64 hidden lg:flex"
+      isDrawerMode ? "w-full" : "w-64 hidden lg:flex"
     )}>
       {/* Brand Header */}
       <div className="p-8 border-b border-sidebar-border/10 flex items-center gap-4 bg-white/5 backdrop-blur-xl">
-        <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-white flex items-center justify-center p-1.5 shadow-xl shadow-black/25 ring-1 ring-white/10">
+        <div className="relative h-12 w-12 rounded-2xl overflow-hidden bg-white flex items-center justify-center p-1 shadow-xl shadow-black/25 ring-1 ring-white/10">
           <Image 
             src="/logo.png" 
-            alt="Logo" 
-            width={48} 
-            height={48} 
+            alt="FarmicleGrow Logo" 
+            width={44} 
+            height={44} 
             className="w-full h-full object-contain" 
             priority
           />
@@ -271,7 +135,7 @@ export function Sidebar({
                       "transition-transform duration-300 group-hover:scale-110",
                       active ? "text-white" : "opacity-70"
                     )}>
-                      {item.icon}
+                      <item.icon className="w-5 h-5" />
                     </div>
                     <span className={cn(
                       "text-xs tracking-tight",
@@ -298,8 +162,8 @@ export function Sidebar({
           <span className="font-black tracking-tight text-xs uppercase">Sign Out</span>
         </Button>
         
-        <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 shadow-inner">
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+        <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 p-4 shadow-inner">
+          <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />
           <p className="text-[10px] text-sidebar-foreground/60 font-black uppercase tracking-widest">
             Live Network Active
           </p>

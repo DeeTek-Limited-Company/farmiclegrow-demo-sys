@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ entryId: string }>;
@@ -26,11 +27,11 @@ const updateSchema = z.object({
   humidity: optionalNumber.nullable().optional(),
 });
 
-async function getAuthorizedEntry(authUser: { id: string; roles: string[] }, entryId: string) {
-  const whereClause: any = { id: entryId };
+async function getAuthorizedEntry(authUser: { id: string; roles: string[]; organizationId: string }, entryId: string) {
+  const whereClause: any = { id: entryId, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -50,8 +51,10 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { entryId } = await context.params;
-  const entry = await getAuthorizedEntry(auth.user, entryId);
+  const entry = await getAuthorizedEntry({ id: auth.user.id, roles: auth.user.roles, organizationId }, entryId);
   if (!entry) return NextResponse.json({ message: "Warehouse entry not found or unauthorized." }, { status: 404 });
 
   return NextResponse.json({ entry });
@@ -61,8 +64,10 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { entryId } = await context.params;
-  const existing = await getAuthorizedEntry(auth.user, entryId);
+  const existing = await getAuthorizedEntry({ id: auth.user.id, roles: auth.user.roles, organizationId }, entryId);
   if (!existing) return NextResponse.json({ message: "Warehouse entry not found or unauthorized." }, { status: 404 });
 
   const payload = await request.json().catch(() => null);
@@ -78,7 +83,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   if (data.harvestId) {
     const harvest = await prisma.harvestRecord.findUnique({
-      where: { id: data.harvestId },
+      where: { id: data.harvestId, organizationId },
       select: { id: true, farmerId: true },
     });
     if (!harvest) return NextResponse.json({ message: "Harvest record not found." }, { status: 404 });
@@ -88,7 +93,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const updated = await prisma.warehouseEntry.update({
-    where: { id: entryId },
+    where: { id: entryId, organizationId },
     data: {
       harvestId: data.harvestId ?? undefined,
       warehouseName: data.warehouseName ?? undefined,
@@ -109,11 +114,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireApiRole(["admin", "agronomist", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { entryId } = await context.params;
-  const existing = await getAuthorizedEntry(auth.user, entryId);
+  const existing = await getAuthorizedEntry({ id: auth.user.id, roles: auth.user.roles, organizationId }, entryId);
   if (!existing) return NextResponse.json({ message: "Warehouse entry not found or unauthorized." }, { status: 404 });
 
-  await prisma.warehouseEntry.delete({ where: { id: entryId } });
+  await prisma.warehouseEntry.delete({ 
+    where: { id: entryId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/security/audit";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 const updateUserSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
@@ -22,6 +23,8 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ message: auth.message }, { status: auth.status });
     }
 
+    const organizationId = requireOrgScope(auth.user);
+
     const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
     const userAgent = request.headers.get("user-agent") || undefined;
 
@@ -38,6 +41,16 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const { fullName, email, roleKey } = result.data;
     const { userId } = await context.params;
+
+    // Check if target user exists and belongs to the same organization
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { organizationId: true }
+    });
+
+    if (!targetUser || targetUser.organizationId !== organizationId) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
 
     // Prevent admin from removing their own admin privileges to avoid lockout
     if (auth.user.id === userId && roleKey !== "admin") {
@@ -95,6 +108,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
     await logAudit({
       action: "USER_UPDATED",
+      organizationId,
       userId: auth.user.id,
       details: { targetUserId: userId, fullName, email, role: roleKey },
       ip,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 type RouteContext = {
   params: Promise<{ plotId: string }>;
@@ -21,11 +22,11 @@ const updatePlotSchema = z.object({
   environmentalRiskLevel: z.string().trim().min(1).optional().nullable(),
 });
 
-async function getAuthorizedPlot(authUser: { id: string; roles: string[] }, plotId: string) {
-  const whereClause: any = { id: plotId };
+async function getAuthorizedPlot(authUser: { id: string; roles: string[]; organizationId: string }, plotId: string) {
+  const whereClause: any = { id: plotId, organizationId: authUser.organizationId };
   if (authUser.roles.includes("agronomist") && !authUser.roles.includes("admin") && !authUser.roles.includes("ops")) {
     const assignments = await prisma.agronomistDistrict.findMany({
-      where: { agronomistId: authUser.id },
+      where: { agronomistId: authUser.id, organizationId: authUser.organizationId },
       select: { districtId: true },
     });
     const districtIds = assignments.map((a) => a.districtId);
@@ -46,8 +47,12 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { plotId } = await context.params;
-  const plot = await getAuthorizedPlot(auth.user, plotId);
+  const plot = await getAuthorizedPlot(actor, plotId);
   if (!plot) {
     return NextResponse.json({ message: "Plot not found or unauthorized." }, { status: 404 });
   }
@@ -61,8 +66,12 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { plotId } = await context.params;
-  const existing = await getAuthorizedPlot(auth.user, plotId);
+  const existing = await getAuthorizedPlot(actor, plotId);
   if (!existing) {
     return NextResponse.json({ message: "Plot not found or unauthorized." }, { status: 404 });
   }
@@ -78,7 +87,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const data = parsed.data;
   const updated = await prisma.farmPlot.update({
-    where: { id: plotId },
+    where: { id: plotId, organizationId },
     data: {
       plotName: data.plotName ?? undefined,
       gpsPolygon: data.gpsPolygon ?? undefined,
@@ -103,21 +112,26 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
+  const user = auth.user;
+  const organizationId = requireOrgScope(user);
+  const actor = { id: user.id, roles: user.roles, organizationId };
+
   const { plotId } = await context.params;
-  const existing = await getAuthorizedPlot(auth.user, plotId);
+  const existing = await getAuthorizedPlot(actor, plotId);
   if (!existing) {
     return NextResponse.json({ message: "Plot not found or unauthorized." }, { status: 404 });
   }
 
   const used = await prisma.productionRecord.findFirst({
-    where: { plotId },
+    where: { plotId, organizationId },
     select: { id: true },
   });
   if (used) {
     return NextResponse.json({ message: "Cannot delete plot with linked production cycles." }, { status: 400 });
   }
 
-  await prisma.farmPlot.delete({ where: { id: plotId } });
+  await prisma.farmPlot.delete({ 
+    where: { id: plotId, organizationId } 
+  });
   return NextResponse.json({ ok: true });
 }
-

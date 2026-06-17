@@ -8,6 +8,9 @@ export type SessionPayload = JWTPayload & {
   roles: AppRole[];
   mustChangePassword: boolean;
   sessionId: string;
+  organizationId: string | null;
+  organizationSlug: string | null;
+  organizationStatus: string | null;
 };
 
 function getSessionSecret() {
@@ -26,6 +29,9 @@ export async function createSessionToken(payload: {
   roles: AppRole[];
   mustChangePassword: boolean;
   sessionId: string;
+  organizationId: string | null;
+  organizationSlug: string | null;
+  organizationStatus: string | null;
 }) {
   const secret = getSessionSecret();
 
@@ -35,11 +41,31 @@ export async function createSessionToken(payload: {
     roles: payload.roles,
     mustChangePassword: payload.mustChangePassword,
     sessionId: payload.sessionId,
+    organizationId: payload.organizationId,
+    organizationSlug: payload.organizationSlug,
+    organizationStatus: payload.organizationStatus,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.userId)
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DURATION_SECONDS}s`)
+    .sign(secret);
+}
+
+export async function createMfaChallengeToken(payload: {
+  userId: string;
+  organizationId: string | null;
+}) {
+  const secret = getSessionSecret();
+
+  return new SignJWT({
+    type: "mfa_challenge",
+    organizationId: payload.organizationId,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(payload.userId)
+    .setIssuedAt()
+    .setExpirationTime("5m") // MFA challenge expires in 5 minutes
     .sign(secret);
 }
 

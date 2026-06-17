@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { cursorFindManyArgs, parseCursorPageParams, toCursorPage } from "@/lib/pagination/cursor";
 
 const messageSchema = z.object({
   content: z.string().min(1, "Message content cannot be empty"),
@@ -15,11 +17,14 @@ export async function GET(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["buyer", "admin", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
 
+  const organizationId = requireOrgScope(auth.user);
+
   const { orderId } = await context.params;
+  const { limit, cursor } = parseCursorPageParams(request, { defaultLimit: 100, maxLimit: 500 });
 
   // Verify access: Admin/Ops see everything, Buyer only sees their own order messages
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, organizationId },
     select: { buyerId: true },
   });
 
@@ -32,22 +37,26 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  const messages = await prisma.orderMessage.findMany({
-    where: { orderId },
+  const messagesWithExtra = await prisma.orderMessage.findMany({
+    where: { orderId, organizationId },
     include: {
       sender: {
         select: { fullName: true, id: true },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...cursorFindManyArgs({ limit, cursor }),
   });
 
-  return NextResponse.json({ messages });
+  const { page, pageInfo } = toCursorPage(messagesWithExtra, limit);
+  return NextResponse.json({ messages: page.reverse(), pageInfo });
 }
 
 export async function POST(request: Request, context: RouteContext) {
   const auth = await requireApiRole(["buyer", "admin", "ops"]);
   if (!auth.ok) return NextResponse.json({ message: auth.message }, { status: auth.status });
+
+  const organizationId = requireOrgScope(auth.user);
 
   const { orderId } = await context.params;
 
@@ -56,9 +65,9 @@ export async function POST(request: Request, context: RouteContext) {
     const validated = messageSchema.parse(body);
 
     // Verify access
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { buyerId: true },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, organizationId },
+      select: { buyerId: true, organizationId: true },
     });
 
     if (!order) return NextResponse.json({ message: "Order not found" }, { status: 404 });
@@ -72,6 +81,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const message = await prisma.orderMessage.create({
       data: {
+        organizationId: order.organizationId,
         orderId,
         senderId: auth.user.id,
         content: validated.content,

@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/lib/auth-context";
 
 type HarvestOption = {
   id: string;
@@ -84,6 +85,9 @@ export function QualityTestingClient({
   initialTests: TestRow[];
 }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const orgBase = user?.organizationSlug ? `/org/${user.organizationSlug}` : "";
+  const withOrg = (href: string) => (orgBase ? `${orgBase}${href}` : href);
   const [tests, setTests] = useState<TestRow[]>(initialTests);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -270,7 +274,7 @@ export function QualityTestingClient({
                     <span className="text-slate-400"> · {format(new Date(t.dateTested), "MMM d, yyyy")}</span>
                   </CardTitle>
                   <p className="text-slate-500 mt-1 font-medium">
-                    <Link href={`/agronomist/farmers/${t.harvest.farmer.id}`} className="hover:underline">
+                    <Link href={withOrg(`/agronomist/farmers/${t.harvest.farmer.id}`)} className="hover:underline">
                       {t.harvest.farmer.fullName}
                     </Link>
                     {t.harvest.farmer.phone ? ` (${t.harvest.farmer.phone})` : ""}
@@ -486,4 +490,3 @@ export function QualityTestingClient({
     </div>
   );
 }
-
