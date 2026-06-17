@@ -107,38 +107,6 @@ async function seedDefaultOrganization() {
   });
 }
 
-async function seedSuperAdmin(orgId: string) {
-  const superEmail = readRequiredSeedEnv("SEED_SUPER_ADMIN_EMAIL");
-  const superPassword = readRequiredSeedEnv("SEED_SUPER_ADMIN_PASSWORD");
-
-  const passwordHash = await hashPassword(superPassword);
-
-  const superUser = await prisma.user.upsert({
-    where: { email: superEmail },
-    update: {
-      fullName: "FarmicleGrow Platform Admin",
-      passwordHash,
-      isActive: true,
-      organizationId: orgId,
-    },
-    create: {
-      email: superEmail,
-      fullName: "FarmicleGrow Platform Admin",
-      passwordHash,
-      isActive: true,
-      organizationId: orgId,
-    },
-  });
-
-  const superRole = await prisma.role.findUniqueOrThrow({ where: { key: "super_admin" } });
-
-  await prisma.userRole.upsert({
-    where: { userId_roleId: { userId: superUser.id, roleId: superRole.id } },
-    update: {},
-    create: { userId: superUser.id, roleId: superRole.id },
-  });
-}
-
 async function seedAdmin(orgId: string) {
   const adminEmail = readRequiredSeedEnv("SEED_ADMIN_EMAIL");
   const adminPassword = readRequiredSeedEnv("SEED_ADMIN_PASSWORD");
@@ -237,7 +205,6 @@ async function main() {
   await seedRoles();
   await seedBillingPlans();
   const defaultOrg = await seedDefaultOrganization();
-  await seedSuperAdmin(defaultOrg.id);
   await seedAdmin(defaultOrg.id);
   await seedAgronomist(defaultOrg.id);
   await seedOpsUser(defaultOrg.id);
