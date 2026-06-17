@@ -4,13 +4,12 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import dotenv from "dotenv";
 import path from "node:path";
-import { prisma } from "../lib/prisma";
-import { hashPassword } from "../lib/auth/password";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+// Load env vars BEFORE importing anything else that uses them
 if (existsSync(".env.local")) {
-  dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+  dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 }
+dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 
 const args = new Set(process.argv.slice(2));
 const shouldGeneratePassword = args.has("--generate");
@@ -19,9 +18,9 @@ const resetExisting = args.has("--reset");
 
 function getDatabaseTarget(): string {
   const url =
-    process.env.DATABASE_URL_MIGRATE ||
     process.env.DATABASE_URL ||
     process.env.DATABASE_URL_POOLER ||
+    process.env.DATABASE_URL_MIGRATE ||
     process.env.DATABASE_URL_DIRECT;
 
   if (!url) {
@@ -37,9 +36,9 @@ function getDatabaseTarget(): string {
 
 function assertSafeTarget() {
   const url =
-    process.env.DATABASE_URL_MIGRATE ||
     process.env.DATABASE_URL ||
     process.env.DATABASE_URL_POOLER ||
+    process.env.DATABASE_URL_MIGRATE ||
     process.env.DATABASE_URL_DIRECT ||
     "";
 
@@ -116,52 +115,56 @@ async function promptLine(question: string): Promise<string> {
   }
 }
 
-async function ensureSuperAdminRole() {
-  return prisma.role.upsert({
-    where: { key: "super_admin" },
-    update: { name: "Super Administrator" },
-    create: { key: "super_admin", name: "Super Administrator" },
-  });
-}
-
-async function ensureDefaultOrganization() {
-  return prisma.organization.upsert({
-    where: { slug: "farmiclegrow" },
-    update: {
-      name: "FarmicleGrow Exporters",
-      status: "ACTIVE",
-    },
-    create: {
-      id: "org_default",
-      name: "FarmicleGrow Exporters",
-      slug: "farmiclegrow",
-      status: "ACTIVE",
-    },
-  });
-}
-
-async function findExistingSuperAdmin() {
-  return prisma.user.findFirst({
-    where: {
-      userRoles: {
-        some: {
-          role: { key: "super_admin" },
-        },
-      },
-    },
-    include: {
-      userRoles: {
-        include: { role: true },
-      },
-    },
-  });
-}
-
 async function createSuperAdmin() {
   assertSafeTarget();
 
+  // Now import prisma and hashPassword AFTER env vars are loaded
+  const { prisma } = await import("../lib/prisma.js");
+  const { hashPassword } = await import("../lib/auth/password.js");
+
   const target = getDatabaseTarget();
   console.log(`Target database: ${target}`);
+
+  const findExistingSuperAdmin = async () => {
+    return prisma.user.findFirst({
+      where: {
+        userRoles: {
+          some: {
+            role: { key: "super_admin" },
+          },
+        },
+      },
+      include: {
+        userRoles: {
+          include: { role: true },
+        },
+      },
+    });
+  };
+
+  const ensureSuperAdminRole = async () => {
+    return prisma.role.upsert({
+      where: { key: "super_admin" },
+      update: { name: "Super Administrator" },
+      create: { key: "super_admin", name: "Super Administrator" },
+    });
+  };
+
+  const ensureDefaultOrganization = async () => {
+    return prisma.organization.upsert({
+      where: { slug: "farmiclegrow" },
+      update: {
+        name: "FarmicleGrow Exporters",
+        status: "ACTIVE",
+      },
+      create: {
+        id: "org_default",
+        name: "FarmicleGrow Exporters",
+        slug: "farmiclegrow",
+        status: "ACTIVE",
+      },
+    });
+  };
 
   const existing = await findExistingSuperAdmin();
   if (existing && !resetExisting) {
@@ -172,13 +175,13 @@ async function createSuperAdmin() {
 
   // Parse command-line arguments for email and password (for automation)
   // Format: npm run create-super-admin -- email password [fullName]
-  const args = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
+  const cmdArgs = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
   let email, fullName, password;
 
-  if (args.length >= 2) {
-    email = args[0].toLowerCase();
-    password = args[1];
-    fullName = args[2] || "FarmicleGrow Platform Admin";
+  if (cmdArgs.length >= 2) {
+    email = cmdArgs[0].toLowerCase();
+    password = cmdArgs[1];
+    fullName = cmdArgs[2] || "FarmicleGrow Platform Admin";
   } else {
     // Interactive mode
     const emailInput = await promptLine("Super admin email: ");
@@ -255,13 +258,12 @@ async function createSuperAdmin() {
 
   console.log(`Super admin ready: ${user.email}`);
   console.log("Credentials are stored as a password hash in the database only.");
+
+  await prisma.$disconnect();
 }
 
 createSuperAdmin()
   .catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });
