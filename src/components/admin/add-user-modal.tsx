@@ -157,7 +157,7 @@ export function AddUserModal() {
         <DialogHeader>
           <DialogTitle className="text-2xl font-black tracking-tight">Add New User</DialogTitle>
           <DialogDescription className="text-sm font-medium text-muted-foreground">
-            Create a new account. The user will be required to change this temporary password upon their first login.
+            Create a new account and set an initial password. The user must reset it on first login.
           </DialogDescription>
         </DialogHeader>
 
@@ -205,12 +205,12 @@ export function AddUserModal() {
 
           <div className="space-y-2">
             <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Temporary Password
+              Initial Password
             </Label>
             <Input
               id="password"
               name="password"
-              type="text" // using text so admin can easily read what they typed to copy it
+              type="password"
               value={formData.password}
               onChange={handleChange}
               placeholder="Min 8 characters"

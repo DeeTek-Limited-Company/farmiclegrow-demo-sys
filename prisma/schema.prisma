@@ -18,7 +18,6 @@ model User {
   mustChangePassword  Boolean              @default(false)
   failedLoginAttempts Int                  @default(0)
   lockUntil           DateTime?
-  temporaryPassword   String?
   organizationId      String?
   mfaEnabled          Boolean              @default(false)
   mfaSecret           String?
@@ -76,6 +75,7 @@ model Farmer {
   id                  String              @id @default(cuid())
   externalRef         String?             @unique
   fullName            String
+  email               String?
   phone               String?
   gender              String?
   dateOfBirth         DateTime?

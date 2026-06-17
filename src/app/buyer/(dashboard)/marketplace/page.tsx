@@ -72,11 +72,11 @@ export default async function BuyerMarketplacePage() {
   }));
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Global Marketplace</h1>
-          <p className="text-slate-500 mt-1 font-medium">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Global Marketplace</h1>
+          <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500 sm:text-base">
             Browse verified agricultural products from across the FarmicleGrow network.
           </p>
         </div>

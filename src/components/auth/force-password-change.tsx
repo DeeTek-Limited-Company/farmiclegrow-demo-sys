@@ -72,7 +72,7 @@ export function ForcePasswordChange() {
             <DialogTitle className="text-xl">Security Update Required</DialogTitle>
           </div>
           <DialogDescription>
-            For your security, you must change your temporary password before continuing to the dashboard.
+            For your security, you must reset your initial password before continuing to the dashboard.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4 pt-4">

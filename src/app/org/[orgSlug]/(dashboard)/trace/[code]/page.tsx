@@ -55,6 +55,10 @@ export default async function InternalTracePage({ params }: PageProps) {
     notFound();
   }
 
+  if (user.roles.includes("farmer")) {
+    notFound();
+  }
+
   const batch = await prisma.batch.findFirst({
     where: {
       batchId: decodeURIComponent(code),
@@ -104,16 +108,6 @@ export default async function InternalTracePage({ params }: PageProps) {
 
   if (!batch) {
     notFound();
-  }
-
-  if (user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findFirst({
-      where: { externalRef: user.id, organizationId },
-      select: { id: true },
-    });
-    if (!farmer || farmer.id !== batch.farmerId) {
-      notFound();
-    }
   }
 
   if (
@@ -266,7 +260,7 @@ export default async function InternalTracePage({ params }: PageProps) {
   );
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 pb-12 sm:space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-4">
           <Button asChild variant="ghost" className="rounded-2xl font-bold text-slate-500 px-0">
@@ -284,7 +278,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                 {batch.publicTraceVisibility}
               </Badge>
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-slate-900">{batch.batchId}</h1>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">{batch.batchId}</h1>
             <p className="text-slate-500 mt-2 max-w-3xl font-medium">
               Detailed app trace for {batch.crop}. This internal source-of-trust follows the crop from
               planting and field evidence through harvest, quality, warehousing, logistics, and sale.
@@ -293,8 +287,8 @@ export default async function InternalTracePage({ params }: PageProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
+        <div className="space-y-6 2xl:col-span-2">
           <Card className="rounded-[2.5rem] border-slate-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl font-black">
@@ -303,7 +297,7 @@ export default async function InternalTracePage({ params }: PageProps) {
               </CardTitle>
               <CardDescription>Core batch identity and publication status.</CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Crop</p>
                 <p className="text-sm font-bold text-slate-900 mt-1">{batch.crop}</p>
@@ -333,7 +327,7 @@ export default async function InternalTracePage({ params }: PageProps) {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <Card className="rounded-[2.5rem] border-slate-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg font-black">
@@ -354,7 +348,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Location</p>
                   <p className="text-sm font-bold text-slate-900 mt-1">{farmerLocation || "—"}</p>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Certification</p>
                     <p className="text-sm font-bold text-slate-900 mt-1">{batch.farmer.certificationStatus || "—"}</p>
@@ -393,7 +387,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                     {traceView.productionTrust.summary.farmingMethod || "—"}
                   </p>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status</p>
                     <p className="text-sm font-bold text-slate-900 mt-1">
@@ -407,7 +401,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Expected Yield</p>
                     <p className="text-sm font-bold text-slate-900 mt-1">
@@ -425,7 +419,7 @@ export default async function InternalTracePage({ params }: PageProps) {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
             <Card className="rounded-[2.5rem] border-slate-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg font-black">
@@ -616,7 +610,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                 traceView.postHarvest.milestones.map((milestone) => (
                   <div
                     key={milestone.id}
-                    className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
                       <p className="text-sm font-black text-slate-900">{milestone.type}</p>
@@ -650,7 +644,7 @@ export default async function InternalTracePage({ params }: PageProps) {
               ) : (
                 traceView.timeline.map((item, index) => (
                   <div key={`${item.kind}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-black text-slate-900">
                           {item.title}
@@ -743,7 +737,7 @@ export default async function InternalTracePage({ params }: PageProps) {
                 traceView.commercial.salesRecords.map((sale) => (
                   <div
                     key={sale.id}
-                    className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
                       <p className="text-sm font-black text-slate-900">{sale.buyerName}</p>
@@ -764,7 +758,7 @@ export default async function InternalTracePage({ params }: PageProps) {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="order-2 2xl:order-none space-y-6">
           <InternalTraceActions orgSlug={orgSlug} batchId={batch.batchId} cropName={batch.crop} />
 
           <PublicTraceControls
@@ -820,49 +814,49 @@ export default async function InternalTracePage({ params }: PageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Planting Records</span>
                 <span className="text-sm font-black text-slate-900">
                   {traceView.productionTrust.plantingActivities.length}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Field Activities</span>
                 <span className="text-sm font-black text-slate-900">
                   {traceView.productionTrust.fieldActivities.length}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Inputs</span>
                 <span className="text-sm font-black text-slate-900">
                   {traceView.productionTrust.inputTraceabilities.length}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Harvest / Tests</span>
                 <span className="text-sm font-black text-slate-900">
                   {traceView.harvestTrust.harvestRecords.length} / {qualityTestCount}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Milestones</span>
                 <span className="text-sm font-black text-slate-900">{traceView.postHarvest.milestones.length}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Warehouse / Movements</span>
                 <span className="text-sm font-black text-slate-900">
                   {traceView.postHarvest.warehouseEntries.length} / {traceView.postHarvest.movementLogs.length}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sales Records</span>
                 <span className="text-sm font-black text-slate-900">{traceView.commercial.salesRecords.length}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Timeline Events</span>
                 <span className="text-sm font-black text-slate-900">{traceView.timeline.length}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Updated</span>
                 <span className="text-sm font-black text-slate-900">{formatDate(batch.updatedAt)}</span>
               </div>

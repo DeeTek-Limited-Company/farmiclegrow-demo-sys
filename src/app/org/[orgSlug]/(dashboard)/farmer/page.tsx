@@ -1,8 +1,10 @@
 import { requireRole } from "@/lib/auth/server";
 import { prisma } from "@/lib/prisma";
+import { requireOrgScope } from "@/lib/tenant/scope";
+import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Leaf, MapPin, Calendar, CheckCircle, Clock, XCircle, AlertCircle, TrendingUp, History, BellRing } from "lucide-react";
+import { Leaf, MapPin, CheckCircle, Clock, XCircle, AlertCircle, TrendingUp, History, BellRing } from "lucide-react";
 import { ProductionRecordForm } from "@/components/farmer/production-record-form";
 
 function formatDate(value: Date | null | undefined) {
@@ -29,10 +31,12 @@ function getStatusBadge(status: string | undefined) {
 
 export default async function FarmerDashboardPage() {
   const user = await requireRole(["farmer"]);
+  const organizationId = requireOrgScope(user);
 
   const farmer = await prisma.farmer.findFirst({
     where: {
-      OR: [{ externalRef: user.id }, { externalRef: user.email }, { fullName: user.name }],
+      organizationId,
+      OR: [{ externalRef: user.id }, { email: user.email }, { fullName: user.name }],
     },
     include: {
       farmProfiles: {
@@ -50,7 +54,7 @@ export default async function FarmerDashboardPage() {
   });
 
   const notifications = await prisma.notification.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, organizationId },
     orderBy: { createdAt: "desc" },
     take: 10,
   });
@@ -59,15 +63,47 @@ export default async function FarmerDashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Farmer Dashboard</h1>
-          <p className="text-muted-foreground mt-1 text-lg">Welcome back, <span className="text-foreground font-semibold">{user.name}</span></p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Farmer workspace</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900">Farmer Dashboard</h1>
+          <p className="max-w-2xl text-sm font-medium text-slate-500 sm:text-base">
+            Track onboarding, farm records, notifications, and production logging from one calm workspace.
+          </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-primary/5 rounded-full border border-primary/10">
-          <span className="text-xs font-bold uppercase text-primary/70">Onboarding Status:</span>
+        <div className="rounded-full border border-primary/10 bg-primary/5 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase text-primary/70">Onboarding Status</span>
           {getStatusBadge(latestSubmission?.status)}
+          </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          title="Farm Profiles"
+          value={farmer?.farmProfiles.length ?? 0}
+          description="Verified farm records on file"
+          tone="emerald"
+        />
+        <MetricCard
+          title="Production Logs"
+          value={farmer?.productionRecords.length ?? 0}
+          description="Historical records submitted"
+          tone="blue"
+        />
+        <MetricCard
+          title="Notifications"
+          value={notifications.length}
+          description="Recent messages for your account"
+          tone="slate"
+        />
+        <MetricCard
+          title="Primary Crop"
+          value={farmer?.primaryCrop ?? "—"}
+          description="Current crop focus"
+          tone="amber"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -79,7 +115,7 @@ export default async function FarmerDashboardPage() {
               defaultCrop={farmer?.primaryCrop ?? ""}
             />
 
-            <Card className="border-primary/5 shadow-sm">
+            <Card className="rounded-[2rem] border-0 shadow-lg shadow-slate-200/40">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-primary" />
@@ -88,11 +124,11 @@ export default async function FarmerDashboardPage() {
                 <CardDescription>Overview of your farm activity.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <div className="flex flex-col gap-3 rounded-xl border bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-sm text-muted-foreground">Total Farms</span>
                   <span className="text-xl font-bold">{farmer?.farmProfiles.length ?? 0}</span>
                 </div>
-                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <div className="flex flex-col gap-3 rounded-xl border bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-sm text-muted-foreground">Historical Records</span>
                   <span className="text-xl font-bold">{farmer?.productionRecords.length ?? 0}</span>
                 </div>
@@ -100,7 +136,7 @@ export default async function FarmerDashboardPage() {
             </Card>
           </div>
 
-          <Card className="border-primary/5 shadow-md">
+          <Card className="rounded-[2rem] border-0 shadow-lg shadow-slate-200/40">
             <CardHeader className="border-b bg-muted/20">
               <CardTitle className="flex items-center gap-2">
                 <Leaf className="w-5 h-5 text-primary" />
@@ -112,8 +148,8 @@ export default async function FarmerDashboardPage() {
               {farmer && farmer.farmProfiles.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {farmer.farmProfiles.map((farmProfile) => (
-                    <div key={farmProfile.id} className="p-5 rounded-xl border bg-card hover:border-primary/20 hover:shadow-sm transition-all group">
-                      <div className="flex justify-between items-start mb-4">
+                    <div key={farmProfile.id} className="rounded-[1.5rem] border bg-card p-5 transition-all group hover:border-primary/20 hover:shadow-sm">
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <h3 className="font-bold text-lg group-hover:text-primary transition-colors">{farmProfile.farmName}</h3>
                         <Badge variant="secondary" className="text-[10px] uppercase">{farmer.primaryCrop ?? "No Crop"}</Badge>
                       </div>
@@ -142,7 +178,7 @@ export default async function FarmerDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-primary/5 shadow-md">
+          <Card className="rounded-[2rem] border-0 shadow-lg shadow-slate-200/40">
             <CardHeader className="border-b bg-muted/20">
               <CardTitle className="flex items-center gap-2">
                 <History className="w-5 h-5 text-primary" />
@@ -154,7 +190,7 @@ export default async function FarmerDashboardPage() {
               {farmer && farmer.productionRecords.length > 0 ? (
                 <div className="space-y-3">
                   {farmer.productionRecords.map((record) => (
-                    <div key={record.id} className="flex justify-between items-center p-4 rounded-lg bg-muted/50 border hover:bg-muted transition-colors">
+                    <div key={record.id} className="flex flex-col gap-3 rounded-xl border bg-muted/50 p-4 transition-colors hover:bg-muted sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary">
                           <Leaf className="w-4 h-4" />
@@ -180,7 +216,7 @@ export default async function FarmerDashboardPage() {
 
         {/* Right Column: Notifications and Status Details */}
         <div className="space-y-8">
-          <Card className="border-primary/5 shadow-md overflow-hidden">
+          <Card className="rounded-[2rem] border-0 shadow-lg shadow-slate-200/40 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
               <CardTitle className="flex items-center gap-2 text-primary">
                 <BellRing className="w-5 h-5" />
@@ -211,7 +247,7 @@ export default async function FarmerDashboardPage() {
           </Card>
 
           {latestSubmission?.rejectionReason && (
-            <Card className="border-red-200 bg-red-50/30 overflow-hidden">
+            <Card className="overflow-hidden border-red-200 bg-red-50/30 shadow-lg shadow-red-100/30 rounded-[2rem]">
               <CardHeader className="bg-red-50 border-b border-red-100">
                 <CardTitle className="text-sm font-bold text-red-700 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" /> Attention Required
@@ -231,7 +267,7 @@ export default async function FarmerDashboardPage() {
             </Card>
           )}
 
-          <Card className="border-primary/5 shadow-md">
+          <Card className="rounded-[2rem] border-0 shadow-lg shadow-slate-200/40">
             <CardHeader className="border-b">
               <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground font-bold">Quick Contact</CardTitle>
             </CardHeader>

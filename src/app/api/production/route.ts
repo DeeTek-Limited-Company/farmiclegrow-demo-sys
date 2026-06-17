@@ -50,6 +50,12 @@ export async function GET(request: Request) {
   }
 
   const organizationId = requireOrgScope(auth.user);
+  if (auth.user.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const farmerId = searchParams.get("farmerId");
@@ -57,18 +63,7 @@ export async function GET(request: Request) {
   // Ownership Filtering
   let whereClause: any = { organizationId };
 
-  // Farmers can only see their own records
-  if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findFirst({
-      where: { externalRef: auth.user.id, organizationId },
-      select: { id: true }
-    });
-    if (!farmer) {
-      return NextResponse.json({ records: [] });
-    }
-    whereClause.farmerId = farmer.id;
-  } else if (farmerId) {
-    // Agronomists/Admins can filter by farmerId
+  if (farmerId) {
     whereClause.farmerId = farmerId;
   }
 
@@ -110,6 +105,12 @@ export async function POST(request: Request) {
   }
 
   const organizationId = requireOrgScope(auth.user);
+  if (auth.user.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
 
   const payload = await request.json().catch(() => null);
   const parsed = productionSchema.safeParse(payload);
@@ -139,17 +140,6 @@ export async function POST(request: Request) {
     notes 
   } = parsed.data;
   const resolvedActualHarvestDate = actualHarvestDate ?? harvestDate;
-
-  // Ownership Filtering
-  if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findFirst({
-      where: { externalRef: auth.user.id, organizationId },
-      select: { id: true },
-    });
-    if (!farmer || farmer.id !== farmerId) {
-      return NextResponse.json({ message: "Unauthorized to create records for this farmer." }, { status: 403 });
-    }
-  }
 
   const targetFarmer = await prisma.farmer.findFirst({
     where: { id: farmerId, organizationId },
@@ -232,7 +222,7 @@ export async function POST(request: Request) {
 
       const farmer = await tx.farmer.findFirst({
         where: { id: farmerId, organizationId: targetFarmer.organizationId },
-        select: { externalRef: true, fullName: true },
+        select: { fullName: true },
       });
 
       const adminIds = await tx.userRole.findMany({
@@ -248,7 +238,6 @@ export async function POST(request: Request) {
       recipients.add(auth.user.id);
       adminIds.forEach((a) => recipients.add(a.userId));
       opsIds.forEach((o) => recipients.add(o.userId));
-      if (farmer?.externalRef) recipients.add(farmer.externalRef);
 
       await tx.notification.createMany({
         data: Array.from(recipients).map((userId) => ({

@@ -103,9 +103,12 @@ export function MarketplaceClient({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
       {initialListings.map((listing) => (
-        <Card key={listing.id} className="overflow-hidden group hover:shadow-2xl transition-all duration-500 border-primary/5 flex flex-col h-full rounded-[2.5rem]">
+        <Card
+          key={listing.id}
+          className="group flex h-full flex-col overflow-hidden rounded-[2rem] border-primary/5 transition-all duration-300 hover:shadow-2xl"
+        >
           <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
             {listing.images[0] ? (
               <Image 
@@ -131,8 +134,8 @@ export function MarketplaceClient({
             </div>
           </div>
 
-          <CardContent className="p-6 flex flex-col flex-grow">
-            <div className="flex justify-between items-start mb-4 gap-4">
+          <CardContent className="flex flex-grow flex-col p-6">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-xl font-black text-slate-900 group-hover:text-primary transition-colors leading-tight">
                   {listing.title}
@@ -174,15 +177,19 @@ export function MarketplaceClient({
               </div>
             </div>
 
-            <div className="mt-auto flex gap-2">
+            <div className="mt-auto flex flex-col sm:flex-row gap-2">
               <Button 
                 onClick={() => handleOpenQuoteModal(listing)}
-                className="flex-1 rounded-2xl font-black h-12 bg-slate-900 hover:bg-primary transition-all text-xs uppercase tracking-widest shadow-xl shadow-slate-900/10"
+                className="w-full h-11 rounded-2xl bg-slate-900 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all hover:bg-primary sm:h-12"
               >
                 <ShoppingBag className="w-4 h-4 mr-2" />
                 Request Quote
               </Button>
-              <Button asChild variant="outline" size="icon" className="w-12 h-12 rounded-2xl border-slate-200">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full sm:w-12 h-11 rounded-2xl border-slate-200 sm:h-12 sm:px-0"
+              >
                 <Link
                   href={buildOrgTraceUrl({
                     orgSlug: listing.organization.slug,
@@ -194,6 +201,7 @@ export function MarketplaceClient({
                   target="_blank"
                 >
                   <ArrowUpRight className="w-5 h-5" />
+                  <span className="ml-2 sm:hidden">Open Trace</span>
                 </Link>
               </Button>
             </div>
@@ -203,7 +211,7 @@ export function MarketplaceClient({
 
       {/* Quote Request Modal */}
       <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        <DialogContent className="sm:max-w-[500px] rounded-[2.5rem] p-8">
+        <DialogContent className="rounded-[2rem] p-4 sm:max-w-[500px] sm:p-8">
           <DialogHeader>
             <DialogTitle className="text-2xl font-black text-slate-900 tracking-tight">Request Quote</DialogTitle>
             <DialogDescription className="text-slate-500 font-medium italic">
@@ -280,7 +288,7 @@ export function MarketplaceClient({
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-0">
             <Button 
               variant="ghost" 
               onClick={() => setSelectedListing(null)}

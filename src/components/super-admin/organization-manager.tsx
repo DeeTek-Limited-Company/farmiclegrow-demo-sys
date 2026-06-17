@@ -70,11 +70,15 @@ export interface PlatformStats {
   };
   traceability: {
     totalBatches: number;
-    qrScans: number;
+    qrScans: number | null;
   };
   security: {
-    failedLogins: number;
+    failedLogins: number | null;
   };
+}
+
+function formatStat(value: number | null) {
+  return value === null ? "—" : value.toLocaleString();
 }
 
 interface TenantAdmin {
@@ -308,12 +312,18 @@ export function OrganizationManager({
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Organizations</p>
-                <h3 className="text-2xl font-black text-slate-900">{platformStats.organizations.total}</h3>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {platformStats.organizations.total.toLocaleString()}
+                </h3>
               </div>
             </div>
             <div className="flex gap-2 mt-2">
-              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-100 text-emerald-600 bg-emerald-50/50">{platformStats.organizations.active} Active</Badge>
-              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-100 text-amber-600 bg-amber-50/50">{platformStats.organizations.suspended} Suspended</Badge>
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-100 text-emerald-600 bg-emerald-50/50">
+                {platformStats.organizations.active.toLocaleString()} Active
+              </Badge>
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-100 text-amber-600 bg-amber-50/50">
+                {platformStats.organizations.suspended.toLocaleString()} Suspended
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -326,12 +336,16 @@ export function OrganizationManager({
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Users</p>
-                <h3 className="text-2xl font-black text-slate-900">{platformStats.users.total}</h3>
+                <h3 className="text-2xl font-black text-slate-900">{platformStats.users.total.toLocaleString()}</h3>
               </div>
             </div>
             <div className="flex gap-2 mt-2">
-              <span className="text-[10px] font-bold text-slate-500">{platformStats.users.agronomists} Agros</span>
-              <span className="text-[10px] font-bold text-slate-500">{platformStats.users.farmers} Farmers</span>
+              <span className="text-[10px] font-bold text-slate-500">
+                {platformStats.users.agronomists.toLocaleString()} Agros
+              </span>
+              <span className="text-[10px] font-bold text-slate-500">
+                {platformStats.users.farmers.toLocaleString()} Farmers
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -344,10 +358,18 @@ export function OrganizationManager({
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Production</p>
-                <h3 className="text-2xl font-black text-slate-900">{platformStats.production.totalHarvest.toFixed(1)}T</h3>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {platformStats.production.totalHarvest.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  T
+                </h3>
               </div>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{platformStats.production.totalRecords} Cycles tracked</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+              {platformStats.production.totalRecords.toLocaleString()} cycles tracked
+            </p>
           </CardContent>
         </Card>
 
@@ -359,10 +381,16 @@ export function OrganizationManager({
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Traceability</p>
-                <h3 className="text-2xl font-black text-slate-900">{platformStats.traceability.totalBatches}</h3>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {platformStats.traceability.totalBatches.toLocaleString()}
+                </h3>
               </div>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{platformStats.traceability.qrScans} QR Scans</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+              {platformStats.traceability.qrScans === null
+                ? "QR scans not tracked"
+                : `${formatStat(platformStats.traceability.qrScans)} QR scans`}
+            </p>
           </CardContent>
         </Card>
 
@@ -374,10 +402,14 @@ export function OrganizationManager({
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Security</p>
-                <h3 className="text-2xl font-black text-slate-900">{platformStats.security.failedLogins}</h3>
+                <h3 className="text-2xl font-black text-slate-900">{formatStat(platformStats.security.failedLogins)}</h3>
               </div>
             </div>
-            <p className="text-[10px] font-bold text-rose-400 uppercase tracking-tight">Failed login attempts</p>
+            <p className="text-[10px] font-bold text-rose-400 uppercase tracking-tight">
+              {platformStats.security.failedLogins === null
+                ? "Failed login tracking unavailable"
+                : "Failed login attempts"}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -484,7 +516,7 @@ export function OrganizationManager({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Temporary Password</Label>
+                    <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Initial Password</Label>
                     <Input
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}

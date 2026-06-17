@@ -74,11 +74,11 @@ export default async function AgronomistBatchesPage({
   const totalQuantity = batches.reduce((sum, b) => sum + Number(b.quantity || 0), 0);
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="animate-in space-y-8 fade-in slide-in-from-bottom-4 duration-700 pb-12">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 flex items-center gap-3">
-            <Package className="w-8 h-8 text-primary" />
+          <h1 className="flex items-center gap-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+            <Package className="h-7 w-7 text-primary sm:h-8 sm:w-8" />
             Batches
           </h1>
           <p className="text-slate-500 mt-2 font-medium max-w-2xl">
@@ -157,9 +157,9 @@ export default async function AgronomistBatchesPage({
           ) : (
             <div className="divide-y divide-slate-50">
               {batches.map((b) => (
-                <div key={b.id} className="p-6 hover:bg-slate-50/30 transition-all group">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    <div className="flex items-center gap-5">
+                <div key={b.id} className="group p-5 transition-all hover:bg-slate-50/30 sm:p-6">
+                  <div className="flex flex-col xl:flex-row gap-5 xl:items-center xl:justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
                       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-700 font-black text-xs tracking-widest shadow-sm border border-slate-200/50 px-2 text-center">
                         {b.batchId}
                       </div>
@@ -186,41 +186,44 @@ export default async function AgronomistBatchesPage({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <BatchVisibilityToggle 
-                        batchId={b.batchId} 
-                        initialVisibility={b.publicTraceVisibility as any} 
-                      />
-                      <Link href={buildInternalOrgTracePath(orgSlug, b.batchId)}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+                      <div className="w-full sm:w-auto">
+                        <BatchVisibilityToggle
+                          batchId={b.batchId}
+                          initialVisibility={b.publicTraceVisibility as any}
+                        />
+                      </div>
+                      <Link href={buildInternalOrgTracePath(orgSlug, b.batchId)} className="w-full sm:w-auto">
                         <Button
                           variant="outline"
-                          className="rounded-2xl border-slate-200 font-black h-12"
+                          className="h-11 w-full rounded-2xl border-slate-200 font-black sm:h-12 sm:w-auto"
                         >
                           Open Internal Trace
                           <ArrowUpRight className="w-4 h-4 ml-2" />
                         </Button>
                       </Link>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 group-hover:bg-primary group-hover:text-white transition-all"
-                        asChild
-                      >
-                        <Link href={`/api/batches/${b.batchId}`}>
-                          <ArrowUpRight className="w-6 h-6" />
-                        </Link>
-                      </Button>
-                      <QRLabel
-                        batch={{
-                          batchId: b.batchId,
-                          crop: b.crop,
-                          quantity: Number(b.quantity),
-                          harvestDate: b.harvestDate,
-                          farmerName: b.farmer.fullName,
-                          orgSlug,
-                        }}
-                      />
-                      <MilestoneForm batchId={b.batchId} />
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <QRLabel
+                          batch={{
+                            batchId: b.batchId,
+                            crop: b.crop,
+                            quantity: Number(b.quantity),
+                            harvestDate: b.harvestDate,
+                            farmerName: b.farmer.fullName,
+                            orgSlug,
+                          }}
+                        />
+                        <MilestoneForm batchId={b.batchId} />
+                        <Button
+                          variant="ghost"
+                          className="h-11 w-full rounded-2xl bg-slate-50 text-slate-400 transition-all group-hover:bg-primary group-hover:text-white sm:h-12 sm:w-12"
+                          asChild
+                        >
+                          <Link href={`/api/batches/${b.batchId}`}>
+                            <ArrowUpRight className="w-6 h-6" />
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

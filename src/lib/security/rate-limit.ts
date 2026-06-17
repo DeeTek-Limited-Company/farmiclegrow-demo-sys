@@ -12,6 +12,54 @@ export interface RateLimitResult {
   reset: number;
 }
 
+export interface WriteRateLimitPolicyInput {
+  pathname: string;
+  method: string;
+  ip: string;
+  userId?: string | null;
+}
+
+export interface WriteRateLimitPolicy {
+  key: string;
+  limit: number;
+  windowMs: number;
+}
+
+export function getWriteRateLimitPolicy({
+  pathname,
+  method,
+  ip,
+  userId,
+}: WriteRateLimitPolicyInput): WriteRateLimitPolicy | null {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    return null;
+  }
+
+  if (
+    pathname.startsWith("/api/auth/login") ||
+    pathname.startsWith("/api/auth/signup") ||
+    pathname.startsWith("/api/auth")
+  ) {
+    return null;
+  }
+
+  const actorKey = userId ? `user:${userId}` : `ip:${ip}`;
+
+  if (pathname === "/api/farmers" || pathname.startsWith("/api/farmers/")) {
+    return {
+      key: `write:onboarding:${actorKey}`,
+      limit: 180,
+      windowMs: 60_000,
+    };
+  }
+
+  return {
+    key: `write:general:${actorKey}`,
+    limit: 80,
+    windowMs: 60_000,
+  };
+}
+
 /**
  * Functional API for rate limiting (consumes one token)
  */

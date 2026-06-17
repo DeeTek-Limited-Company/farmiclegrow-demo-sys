@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiRole } from "@/lib/auth/guards";
-import { hashPassword } from "@/lib/auth/password";
-import { randomBytes } from "crypto";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
 import { requireOrgScope } from "@/lib/tenant/scope";
@@ -159,13 +157,6 @@ function computeOnboardingQualityScore(data: z.infer<typeof onboardingSchema>) {
   return score;
 }
 
-function toNormalizedEmail(email: string | undefined, phone: string) {
-  const cleaned = (email || "").trim().toLowerCase();
-  if (cleaned) return cleaned;
-  const phoneDigits = phone.replace(/[^\d]/g, "");
-  return `farmer+${phoneDigits}@farmiclegrow.local`;
-}
-
 function toHectares(size: number | undefined, unit: "acres" | "hectares" | undefined) {
   if (size === undefined) return undefined;
   if (unit === "acres") return Number((size * 0.404686).toFixed(4));
@@ -292,24 +283,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Farmer limit reached for this subscription plan." }, { status: 403 });
   }
 
-  const usersLimit = await checkPlanLimit(organizationId, "users");
-  if (!usersLimit.ok) {
-    await logAudit({
-      action: "BILLING_LIMIT_BLOCKED",
-      organizationId,
-      userId: actor.id,
-      details: { resource: "users", reason: usersLimit.reason, current: (usersLimit as any).current, limit: (usersLimit as any).limit },
-      ip,
-      userAgent,
-      status: "FAILURE",
-    });
-    return NextResponse.json({ message: "User limit reached for this subscription plan." }, { status: 403 });
-  }
-
-  // Generate temporary password
-  const tempPassword = randomBytes(6).toString("hex"); // 12 chars
-  const passwordHash = await hashPassword(tempPassword);
-
   try {
     const result = await prisma.$transaction(
       async (tx) => {
@@ -334,34 +307,13 @@ export async function POST(request: Request) {
         }
       }
 
-      // 1. Find or verify role
-      const farmerRole = await tx.role.findUnique({ where: { key: "farmer" } });
-      if (!farmerRole) throw new Error("Farmer role not found in system.");
-
-      // 2. Create User account
-      const normalizedEmail = toNormalizedEmail(data.email, data.phone);
-      const user = await tx.user.create({
-        data: {
-          organizationId,
-          email: normalizedEmail,
-          fullName: data.fullName,
-          passwordHash,
-          temporaryPassword: tempPassword, // Store temporarily for agronomist visibility
-          isActive: true,
-          mustChangePassword: true,
-          userRoles: {
-            create: { roleId: farmerRole.id }
-          }
-        }
-      });
-
-      // 3. Create Farmer record linked to user
+      // Create the operational farmer record only. Farmers do not receive app logins.
       const hectares = toHectares(data.farmSize, data.farmSizeUnit);
       const farmer = await tx.farmer.create({
         data: {
           organizationId,
-          externalRef: user.id,
           fullName: data.fullName,
+          email: data.email?.trim().toLowerCase() || null,
           phone: data.phone || null,
           gender: data.gender || null,
           dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
@@ -412,7 +364,7 @@ export async function POST(request: Request) {
         },
       });
 
-      // 4. Create Review Submission
+      // Create the review submission for admin approval.
       const onboardingQuality = computeOnboardingQualityScore(data);
       const submission = await tx.farmerSubmission.create({
         data: {
@@ -424,7 +376,7 @@ export async function POST(request: Request) {
         },
       });
 
-      // 5. Notify Admins
+      // Notify admins about the new farmer submission.
       const admins = await tx.userRole.findMany({
         where: { role: { key: "admin" }, user: { organizationId } },
         select: { userId: true },
@@ -468,7 +420,7 @@ export async function POST(request: Request) {
         });
       }
 
-      return { farmer, submission, tempPassword, email: user.email };
+      return { farmer, submission };
       },
       {
         maxWait: 30_000,
@@ -489,7 +441,7 @@ export async function POST(request: Request) {
         submissionId: result.submission.id,
         districtId: data.districtId,
         communityId: data.communityId,
-        createdUserEmail: result.email,
+        farmerEmail: data.email?.trim().toLowerCase() || null,
       },
       ip,
       userAgent,
@@ -543,9 +495,9 @@ export async function POST(request: Request) {
     if (error?.message === "DISTRICT_NOT_ASSIGNED") {
       return NextResponse.json({ message: "You are not assigned to this district." }, { status: 403 });
     }
-    if (error.code === 'P2002') {
-      return NextResponse.json({ message: "A user with this email already exists." }, { status: 409 });
+    if (error.code === "P2002") {
+      return NextResponse.json({ message: "A farmer record already exists with one of the unique values provided." }, { status: 409 });
     }
-    return NextResponse.json({ message: "Failed to create farmer account." }, { status: 500 });
+    return NextResponse.json({ message: "Failed to create farmer record." }, { status: 500 });
   }
 }

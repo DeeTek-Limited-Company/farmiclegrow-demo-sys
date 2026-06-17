@@ -19,7 +19,6 @@ import {
   Calendar,
   Camera,
   Info,
-  Copy,
   Locate,
   Loader2
 } from "lucide-react";
@@ -43,8 +42,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CROP_OPTIONS } from "@/lib/crops";
-
-const STORAGE_KEY = "farmiclegrow_onboarding_draft";
 
 const steps = [
   { id: "personal", title: "Personal Info", description: "Identity & contact details", icon: User, schema: personalSchema },
@@ -263,7 +260,6 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
     }
   };
 
-  const [credentials, setCredentials] = useState<{ email: string; tempPassword: string; farmerName: string } | null>(null);
   const [secondaryCropDraft, setSecondaryCropDraft] = useState<string>("");
 
   const onSubmit = async (data: FarmerOnboardingData) => {
@@ -298,21 +294,10 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
         throw new Error(body?.message ?? "Failed to save farmer record.");
       }
 
-      const result = await response.json();
+      await response.json();
 
-      if (!initialData && result.tempPassword) {
-        // Show credentials screen before closing
-        clearDraft();
-        setCredentials({
-          email: result.email,
-          tempPassword: result.tempPassword,
-          farmerName: result.farmer?.fullName ?? data.personal.fullName,
-        });
-      } else {
-        clearDraft();
-        toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
-        onSuccess();
-      }
+      toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
+      onSuccess();
     } catch (error: any) {
       toast.error(error.message ?? "Error submitting form. Please try again.");
     } finally {
@@ -368,58 +353,6 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
   };
 
   const progress = ((currentStep + 1) / steps.length) * 100;
-
-  // --- Draft Persistence Logic ---
-  const formData = watch();
-
-  // Save draft on change
-  useEffect(() => {
-    if (!initialData && !isSubmitting && !credentials) {
-      const draft = {
-        data: formData,
-        step: currentStep,
-        timestamp: Date.now(),
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-    }
-  }, [formData, currentStep, initialData, isSubmitting, credentials]);
-
-  // Load draft on mount
-  useEffect(() => {
-    if (!initialData) {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          const { data, step, timestamp } = JSON.parse(saved);
-          // Only offer to resume if it's less than 24 hours old
-          const isRecent = Date.now() - timestamp < 24 * 60 * 60 * 1000;
-          
-          if (isRecent && data) {
-            toast("Found an unfinished draft", {
-              description: "Would you like to resume where you left off?",
-              action: {
-                label: "Resume",
-                onClick: () => {
-                  Object.entries(data).forEach(([key, value]) => {
-                    setValue(key as any, value);
-                  });
-                  setCurrentStep(step || 0);
-                  toast.success("Draft restored!");
-                },
-              },
-              duration: 10000,
-            });
-          }
-        } catch (e) {
-          console.error("Failed to parse draft", e);
-        }
-      }
-    }
-  }, [initialData, setValue]);
-
-  const clearDraft = () => {
-    localStorage.removeItem(STORAGE_KEY);
-  };
 
   useEffect(() => {
     const loadDistricts = async () => {
@@ -483,80 +416,6 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
     };
     void loadCommunities();
   }, [selectedDistrictId, districts, setValue]);
-
-  // --- Credentials screen shown after successful submission ---
-  if (credentials) {
-    return (
-      <div className="max-w-xl mx-auto w-full px-4 py-8">
-        <div className="bg-white rounded-[2.5rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-br from-primary to-primary/80 p-8 text-white text-center">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-9 h-9 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold">Farmer Registered!</h2>
-            <p className="text-primary-foreground/80 mt-1 text-sm">
-              Share these login details with <span className="font-semibold text-white">{credentials.farmerName}</span>
-            </p>
-          </div>
-
-          {/* Credentials */}
-          <div className="p-8 space-y-6">
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex gap-3 text-amber-700 text-sm">
-              <Info className="w-5 h-5 shrink-0 mt-0.5" />
-              <p>Copy these credentials now — the password will <strong>not</strong> be shown again. The farmer must change it on first login.</p>
-            </div>
-
-            {/* Email */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Email / Login</label>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={credentials.email}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 font-medium text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => { navigator.clipboard.writeText(credentials.email); toast.success("Email copied!"); }}
-                  className="p-3 rounded-xl border border-slate-300 hover:bg-slate-100 transition-colors"
-                >
-                  <Copy className="w-4 h-4 text-slate-500" />
-                </button>
-              </div>
-            </div>
-
-            {/* Password */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Temporary Password</label>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={credentials.tempPassword}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-blue-700 font-mono font-bold text-sm tracking-widest"
-                />
-                <button
-                  type="button"
-                  onClick={() => { navigator.clipboard.writeText(credentials.tempPassword); toast.success("Password copied!"); }}
-                  className="p-3 rounded-xl border border-slate-300 hover:bg-slate-100 transition-colors"
-                >
-                  <Copy className="w-4 h-4 text-slate-500" />
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => { onSuccess(); setCredentials(null); }}
-              className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition-colors mt-2"
-            >
-              Done — Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8 pt-16 lg:pt-24">

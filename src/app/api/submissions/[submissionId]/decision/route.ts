@@ -5,6 +5,7 @@ import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
 import { requireOrgScope } from "@/lib/tenant/scope";
+import { getSubmissionApprovalBlockers } from "@/lib/onboarding/approval-blockers";
 
 const decisionSchema = z.object({
   action: z.enum(["APPROVED", "REJECTED"]),
@@ -42,7 +43,17 @@ export async function POST(request: Request, context: RouteContext) {
   const submission = await prisma.farmerSubmission.findFirst({
     where: { id: submissionId, organizationId },
     include: {
-      farmer: true,
+      farmer: {
+        include: {
+          farmProfiles: {
+            include: {
+              locations: true,
+            },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      },
       submittedBy: true,
     },
   });
@@ -63,6 +74,19 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const approved = decision.action === "APPROVED";
+  const approvalBlockers = approved
+    ? getSubmissionApprovalBlockers(submission.farmer)
+    : [];
+
+  if (approvalBlockers.length > 0) {
+    return NextResponse.json(
+      {
+        message: "Resolve onboarding blockers before approval.",
+        blockers: approvalBlockers,
+      },
+      { status: 409 },
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.farmerSubmission.updateMany({
@@ -106,41 +130,6 @@ export async function POST(request: Request, context: RouteContext) {
         },
       },
     });
-
-    const farmerLinkCandidates: Array<{ id?: string; email?: string; fullName?: string }> = [
-      { fullName: submission.farmer.fullName },
-    ];
-    if (submission.farmer.externalRef) {
-      farmerLinkCandidates.push({ id: submission.farmer.externalRef });
-      farmerLinkCandidates.push({ email: submission.farmer.externalRef });
-    }
-
-    const farmerUsers = await tx.user.findMany({
-      where: {
-        organizationId: submission.organizationId,
-        userRoles: { some: { role: { key: "farmer" } } },
-        OR: farmerLinkCandidates,
-      },
-      select: { id: true },
-    });
-
-    if (farmerUsers.length > 0) {
-      await tx.notification.createMany({
-        data: farmerUsers.map((item) => ({
-          organizationId: submission.organizationId,
-          userId: item.id,
-          type: approved ? "SUBMISSION_APPROVED" : "SUBMISSION_REJECTED",
-          title: approved ? "Your onboarding was approved" : "Your onboarding was rejected",
-          body: approved
-            ? "Your profile has been approved and is now active."
-            : `Please contact your agronomist for correction. Reason: ${decisionNote}`,
-          metadata: {
-            submissionId,
-            farmerId: submission.farmerId,
-          },
-        })),
-      });
-    }
 
     await recomputeFarmerQualityScore(tx, submission.farmerId);
   });

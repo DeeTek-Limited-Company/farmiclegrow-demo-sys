@@ -155,7 +155,7 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
       if (data.status && previousStatus !== updated.status) {
         const farmer = await tx.farmer.findFirst({
           where: { id: existing.farmerId, organizationId },
-          select: { externalRef: true, fullName: true },
+          select: { fullName: true },
         });
 
         const adminIds = await tx.userRole.findMany({
@@ -171,7 +171,6 @@ async function updateProductionRecord(request: Request, context: RouteCtx) {
         recipients.add(auth.user.id);
         adminIds.forEach((a) => recipients.add(a.userId));
         opsIds.forEach((o) => recipients.add(o.userId));
-        if (farmer?.externalRef) recipients.add(farmer.externalRef);
 
         await tx.notification.createMany({
           data: Array.from(recipients).map((userId) => ({
@@ -208,6 +207,12 @@ export async function GET(request: Request, context: RouteCtx) {
   }
 
   const organizationId = requireOrgScope(auth.user);
+  if (auth.user.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
 
   const record = await prisma.productionRecord.findFirst({
     where: { id, organizationId },
@@ -220,12 +225,6 @@ export async function GET(request: Request, context: RouteCtx) {
 
   if (!record) {
     return NextResponse.json({ message: "Record not found" }, { status: 404 });
-  }
-
-  if (auth.user.roles.includes("farmer")) {
-    if (record.farmer.externalRef !== auth.user.id) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
-    }
   }
 
   if (auth.user.roles.includes("agronomist") && !auth.user.roles.includes("admin") && !auth.user.roles.includes("ops")) {

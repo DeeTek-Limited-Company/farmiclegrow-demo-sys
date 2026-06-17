@@ -17,6 +17,12 @@ export async function GET(_request: Request, context: RouteContext) {
   const organizationId = requireOrgScope(actor);
 
   const { batchId } = await context.params;
+  if (actor.roles.includes("farmer")) {
+    return NextResponse.json(
+      { message: "Farmer self-service is not supported in this release." },
+      { status: 403 },
+    );
+  }
 
   const batch = await prisma.batch.findFirst({
     where: { batchId, organizationId },
@@ -28,16 +34,6 @@ export async function GET(_request: Request, context: RouteContext) {
 
   if (!batch) {
     return NextResponse.json({ message: "Batch not found." }, { status: 404 });
-  }
-
-  if (auth.user.roles.includes("farmer")) {
-    const farmer = await prisma.farmer.findFirst({
-      where: { externalRef: actor.id, organizationId },
-      select: { id: true },
-    });
-    if (!farmer || farmer.id !== batch.farmerId) {
-      return NextResponse.json({ message: "Unauthorized." }, { status: 403 });
-    }
   }
 
   if (

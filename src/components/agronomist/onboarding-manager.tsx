@@ -474,7 +474,7 @@ export function OnboardingManager({
           <AlertDialogHeader className="space-y-3">
             <AlertDialogTitle className="text-2xl font-black text-slate-900">Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription className="text-base text-slate-600 font-medium leading-relaxed">
-              This action cannot be undone. This will permanently delete <strong>{farmerToDelete?.fullName}</strong> and all associated data, including farm plots, harvest records, and login access.
+              This action cannot be undone. This will permanently delete <strong>{farmerToDelete?.fullName}</strong>, the onboarding record, and linked operational data that can be safely deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-8 gap-3">

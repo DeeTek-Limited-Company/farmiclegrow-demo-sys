@@ -3,6 +3,15 @@ import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/auth/password";
 
+function readRequiredSeedEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required seed environment variable: ${name}`);
+  }
+
+  return value;
+}
+
 async function seedRoles() {
   const roles = [
     { key: "super_admin", name: "Super Administrator" },
@@ -99,8 +108,8 @@ async function seedDefaultOrganization() {
 }
 
 async function seedSuperAdmin(orgId: string) {
-  const superEmail = process.env.SEED_SUPER_ADMIN_EMAIL ?? "superadmin@farmiclegrow.local";
-  const superPassword = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "superpassword123";
+  const superEmail = readRequiredSeedEnv("SEED_SUPER_ADMIN_EMAIL");
+  const superPassword = readRequiredSeedEnv("SEED_SUPER_ADMIN_PASSWORD");
 
   const passwordHash = await hashPassword(superPassword);
 
@@ -131,8 +140,8 @@ async function seedSuperAdmin(orgId: string) {
 }
 
 async function seedAdmin(orgId: string) {
-  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "password123";
+  const adminEmail = readRequiredSeedEnv("SEED_ADMIN_EMAIL");
+  const adminPassword = readRequiredSeedEnv("SEED_ADMIN_PASSWORD");
 
   const passwordHash = await hashPassword(adminPassword);
 
@@ -163,8 +172,9 @@ async function seedAdmin(orgId: string) {
 }
 
 async function seedAgronomist(orgId: string) {
-  const agronomistEmail = "agronomist@example.com";
-  const passwordHash = await hashPassword("password123");
+  const agronomistEmail = readRequiredSeedEnv("SEED_AGRONOMIST_EMAIL");
+  const agronomistPassword = readRequiredSeedEnv("SEED_AGRONOMIST_PASSWORD");
+  const passwordHash = await hashPassword(agronomistPassword);
 
   const user = await prisma.user.upsert({
     where: { email: agronomistEmail },
@@ -193,8 +203,9 @@ async function seedAgronomist(orgId: string) {
 }
 
 async function seedOpsUser(orgId: string) {
-  const opsEmail = "ops@example.com";
-  const passwordHash = await hashPassword("password123");
+  const opsEmail = readRequiredSeedEnv("SEED_OPS_EMAIL");
+  const opsPassword = readRequiredSeedEnv("SEED_OPS_PASSWORD");
+  const passwordHash = await hashPassword(opsPassword);
 
   const user = await prisma.user.upsert({
     where: { email: opsEmail },

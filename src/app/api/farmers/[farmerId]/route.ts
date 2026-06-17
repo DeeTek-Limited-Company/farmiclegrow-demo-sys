@@ -6,14 +6,27 @@ import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
 import { requireOrgScope } from "@/lib/tenant/scope";
 
+const certificationSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  issuingBody: z.string().trim().max(200).optional().or(z.literal("")),
+  expiryDate: z.string().optional(),
+  documentUrl: z.string().trim().url().optional().or(z.literal("")),
+});
+
 const updateSchema = z.object({
   externalRef: z.string().trim().max(120).optional().or(z.literal("")),
   fullName: z.string().trim().min(2).max(150),
+  email: z.string().email().optional().or(z.literal("")),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   gender: z.string().trim().max(40).optional().or(z.literal("")),
+  cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
+  dateOfBirth: z.string().optional().or(z.literal("")),
+  ghanaCardNumber: z.string().trim().max(64).optional().or(z.literal("")),
+  ghanaCardPhotoUrl: z.string().trim().url().optional().or(z.literal("")),
   bio: z.string().trim().max(1000).optional().or(z.literal("")),
   communityId: z.string().cuid().optional(),
   farmName: z.string().trim().min(2).max(150),
+  farmType: z.string().trim().max(120).optional().or(z.literal("")),
   primaryCrop: z.string().trim().max(120).optional().or(z.literal("")),
   secondaryCrops: z.array(z.string().trim().min(1)).optional(),
   farmSize: z.coerce.number().positive().optional(),
@@ -22,17 +35,63 @@ const updateSchema = z.object({
   irrigationType: z.string().trim().max(120).optional().or(z.literal("")),
   numberOfPlots: z.coerce.number().int().nonnegative().optional(),
   totalAreaHectare: z.coerce.number().positive().optional(),
+  farmSitePhotoUrl: z.string().trim().url().optional().or(z.literal("")),
   location: z
     .object({
+      region: z.string().trim().max(120).optional().or(z.literal("")),
+      district: z.string().trim().max(120).optional().or(z.literal("")),
+      community: z.string().trim().max(120).optional().or(z.literal("")),
       latitude: z.coerce.number().min(-90).max(90).optional(),
       longitude: z.coerce.number().min(-180).max(180).optional(),
       address: z.string().trim().max(255).optional().or(z.literal("")),
     })
     .optional(),
+  certifications: z.array(certificationSchema).optional(),
 });
+
+function toHectares(size: number | undefined, unit: "acres" | "hectares" | "" | undefined) {
+  if (size === undefined) return undefined;
+  if (unit === "acres") return Number((size * 0.404686).toFixed(4));
+  return size;
+}
+
+function computeOnboardingQualityScore(data: z.infer<typeof updateSchema>) {
+  let score = 0;
+
+  if (data.email?.trim()) score += 5;
+  if (data.dateOfBirth?.trim()) score += 5;
+  if (data.ghanaCardNumber?.trim()) score += 15;
+  if (data.ghanaCardPhotoUrl?.trim()) score += 10;
+  if (data.cooperativeName?.trim()) score += 3;
+  if (data.location?.latitude !== undefined && data.location?.longitude !== undefined) score += 15;
+  if (data.location?.address?.trim()) score += 5;
+  if (data.farmName?.trim()) score += 10;
+  if (data.farmSize !== undefined) score += 10;
+  if (data.primaryCrop?.trim()) score += 10;
+  if (data.farmSitePhotoUrl?.trim()) score += 5;
+  if ((data.secondaryCrops || []).length > 0) score += 5;
+  if ((data.certifications || []).length > 0) score += 2;
+
+  return Math.min(score, 100);
+}
 
 type RouteContext = {
   params: Promise<{ farmerId: string }>;
+};
+
+type OnboardingDocumentInput = {
+  farmerId: string;
+  type: string;
+  name: string;
+  url: string;
+  status: string;
+  organizationId: string;
+};
+
+type ResubmittedSubmissionSummary = {
+  id: string;
+  farmerId: string;
+  status: string;
 };
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -142,14 +201,25 @@ export async function PUT(request: Request, context: RouteContext) {
     whereClause.community = { districtId: { in: districtIds.length ? districtIds : ["__none__"] } };
   }
 
-  if (data.communityId) {
-    const community = await prisma.community.findFirst({
+  const selectedCommunity = data.communityId
+    ? await prisma.community.findFirst({
       where: { id: data.communityId, organizationId },
-      select: { id: true },
-    });
-    if (!community) {
+      select: {
+        id: true,
+        name: true,
+        district: {
+          select: {
+            id: true,
+            name: true,
+            region: { select: { name: true } },
+          },
+        },
+      },
+    })
+    : null;
+
+  if (data.communityId && !selectedCommunity) {
       return NextResponse.json({ message: "Invalid communityId." }, { status: 400 });
-    }
   }
 
   const existing = await prisma.farmer.findFirst({
@@ -158,6 +228,10 @@ export async function PUT(request: Request, context: RouteContext) {
       farmProfiles: {
         include: { locations: true },
         orderBy: { createdAt: "asc" },
+      },
+      submissions: {
+        orderBy: { submittedAt: "desc" },
+        take: 1,
       },
     },
   });
@@ -170,13 +244,20 @@ export async function PUT(request: Request, context: RouteContext) {
   const primaryLocation = primaryProfile?.locations[0];
 
   const updated = await prisma.$transaction(async (tx) => {
+    const totalAreaHectare =
+      data.totalAreaHectare !== undefined ? data.totalAreaHectare : toHectares(data.farmSize, data.farmSizeUnit);
+
     const farmerUpdate = await tx.farmer.updateMany({
       where: { id: farmerId, organizationId },
       data: {
         externalRef: data.externalRef || null,
         fullName: data.fullName,
+        email: data.email?.trim().toLowerCase() || null,
         phone: data.phone || null,
         gender: data.gender || null,
+        cooperativeName: data.cooperativeName || null,
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+        ghanaCardNumber: data.ghanaCardNumber || null,
         bio: data.bio || null,
         communityId: data.communityId || undefined,
         ...(data.primaryCrop !== undefined ? { primaryCrop: data.primaryCrop || null } : {}),
@@ -201,14 +282,15 @@ export async function PUT(request: Request, context: RouteContext) {
         ? await tx.farmProfile.create({
             data: {
               organizationId: farmer.organizationId,
-              farmerId: farmerId,
+              farmerId,
               farmName: data.farmName,
+              farmType: data.farmType || null,
               farmSize: data.farmSize,
               farmSizeUnit: data.farmSizeUnit || null,
               ownershipType: data.ownershipType || null,
               irrigationType: data.irrigationType || null,
               numberOfPlots: data.numberOfPlots,
-              totalAreaHectare: data.totalAreaHectare,
+              totalAreaHectare,
             },
           })
         : await (async () => {
@@ -216,12 +298,13 @@ export async function PUT(request: Request, context: RouteContext) {
               where: { id: primaryProfile.id, organizationId },
               data: {
                 farmName: data.farmName,
+                farmType: data.farmType || null,
                 farmSize: data.farmSize,
                 farmSizeUnit: data.farmSizeUnit || null,
                 ownershipType: data.ownershipType || null,
                 irrigationType: data.irrigationType || null,
                 numberOfPlots: data.numberOfPlots,
-                totalAreaHectare: data.totalAreaHectare,
+                totalAreaHectare,
               },
             });
             return tx.farmProfile.findFirst({ where: { id: primaryProfile.id, organizationId } });
@@ -239,7 +322,13 @@ export async function PUT(request: Request, context: RouteContext) {
             farmProfileId: profile.id,
             latitude: data.location.latitude ?? null,
             longitude: data.location.longitude ?? null,
-            address: data.location.address || null,
+            region: selectedCommunity?.district.region.name || data.location.region || null,
+            district: selectedCommunity?.district.name || data.location.district || null,
+            community: selectedCommunity?.name || data.location.community || null,
+            address:
+              data.location.address ||
+              [selectedCommunity?.name, selectedCommunity?.district.name, selectedCommunity?.district.region.name].filter(Boolean).join(", ") ||
+              null,
           },
         });
       } else {
@@ -248,14 +337,131 @@ export async function PUT(request: Request, context: RouteContext) {
           data: {
             latitude: data.location.latitude ?? null,
             longitude: data.location.longitude ?? null,
-            address: data.location.address || null,
+            region: selectedCommunity?.district.region.name || data.location.region || null,
+            district: selectedCommunity?.district.name || data.location.district || null,
+            community: selectedCommunity?.name || data.location.community || null,
+            address:
+              data.location.address ||
+              [selectedCommunity?.name, selectedCommunity?.district.name, selectedCommunity?.district.region.name].filter(Boolean).join(", ") ||
+              null,
           },
         });
       }
     }
 
+    if (data.certifications !== undefined) {
+      await tx.certification.deleteMany({
+        where: { farmerId, organizationId },
+      });
+
+      if (data.certifications.length > 0) {
+        await tx.certification.createMany({
+          data: data.certifications.map((certification) => ({
+            organizationId,
+            farmerId,
+            name: certification.name,
+            issuer: certification.issuingBody || null,
+            validTo: certification.expiryDate ? new Date(certification.expiryDate) : null,
+            documentUrl: certification.documentUrl || null,
+          })),
+        });
+      }
+    }
+
+    const shouldSyncDocuments =
+      data.ghanaCardPhotoUrl !== undefined || data.farmSitePhotoUrl !== undefined || data.certifications !== undefined;
+    if (shouldSyncDocuments) {
+      await tx.document.deleteMany({
+        where: {
+          farmerId,
+          organizationId,
+          type: { in: ["GHANA_CARD", "FARM_IMAGE", "CERTIFICATION"] },
+        },
+      });
+
+      const documentsToCreate: OnboardingDocumentInput[] = [];
+      const ghanaCardPhotoUrl = (data.ghanaCardPhotoUrl || "").trim();
+      if (ghanaCardPhotoUrl) {
+        documentsToCreate.push({
+          organizationId,
+          farmerId,
+          type: "GHANA_CARD",
+          name: "Ghana Card",
+          url: ghanaCardPhotoUrl,
+          status: "UPLOADED",
+        });
+      }
+
+      const farmSitePhotoUrl = (data.farmSitePhotoUrl || "").trim();
+      if (farmSitePhotoUrl) {
+        documentsToCreate.push({
+          organizationId,
+          farmerId,
+          type: "FARM_IMAGE",
+          name: "Farm Site Photo",
+          url: farmSitePhotoUrl,
+          status: "UPLOADED",
+        });
+      }
+
+      for (const certification of data.certifications || []) {
+        const documentUrl = (certification.documentUrl || "").trim();
+        if (!documentUrl) continue;
+        documentsToCreate.push({
+          organizationId,
+          farmerId,
+          type: "CERTIFICATION",
+          name: `Certification: ${certification.name}`,
+          url: documentUrl,
+          status: "UPLOADED",
+        });
+      }
+
+      if (documentsToCreate.length > 0) {
+        await tx.document.createMany({ data: documentsToCreate });
+      }
+    }
+
+    let resubmittedSubmission: ResubmittedSubmissionSummary | null = null;
+    const latestSubmission = existing.submissions[0];
+    if (latestSubmission?.status === "REJECTED") {
+      resubmittedSubmission = await tx.farmerSubmission.create({
+        data: {
+          organizationId,
+          farmerId,
+          submittedById: actor.id,
+          status: "PENDING_REVIEW",
+          dataQualityScore: computeOnboardingQualityScore(data),
+        },
+        select: { id: true, farmerId: true, status: true },
+      });
+
+      const admins = await tx.userRole.findMany({
+        where: { role: { key: "admin" }, user: { organizationId } },
+        select: { userId: true },
+      });
+
+      if (admins.length > 0) {
+        await tx.notification.createMany({
+          data: admins.map((admin) => ({
+            organizationId,
+            userId: admin.userId,
+            type: "SUBMISSION_CREATED",
+            title: "Farmer submission resubmitted",
+            body: `${data.fullName} was corrected and sent back for review.`,
+            metadata: {
+              farmerId,
+              submissionId: resubmittedSubmission?.id,
+              previousSubmissionId: latestSubmission.id,
+              resubmittedById: actor.id,
+            },
+          })),
+        });
+      }
+    }
+
     await recomputeFarmerQualityScore(tx, farmerId);
-    return farmer;
+    return { farmer, resubmittedSubmission };
   });
 
   await logAudit({
@@ -265,11 +471,12 @@ export async function PUT(request: Request, context: RouteContext) {
     details: {
       farmerId,
       updates: data,
+      resubmittedSubmissionId: updated.resubmittedSubmission?.id ?? null,
     },
     status: "SUCCESS",
   });
 
-  return NextResponse.json({ farmer: updated });
+  return NextResponse.json({ farmer: updated.farmer, resubmittedSubmission: updated.resubmittedSubmission });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
@@ -325,12 +532,13 @@ export async function DELETE(_request: Request, context: RouteContext) {
       //   FarmerSubmission → ApprovalAction
       await tx.farmer.deleteMany({ where: { id: farmerId, organizationId } });
 
-      // Also delete the linked User account (login credentials)
       if (existing.externalRef) {
         const linkedUser = await tx.user.findFirst({
           where: { id: existing.externalRef, organizationId },
+          include: { userRoles: { include: { role: true } } },
         });
-        if (linkedUser) {
+        const isLegacyFarmerUser = linkedUser?.userRoles?.some((userRole) => userRole.role.key === "farmer");
+        if (linkedUser && isLegacyFarmerUser) {
           await tx.user.deleteMany({ where: { id: existing.externalRef, organizationId } });
         }
       }

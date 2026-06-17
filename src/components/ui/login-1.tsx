@@ -174,10 +174,9 @@ export default function LoginV1({
 
           <div className="z-10 w-full">
             <div className="flex items-center gap-2 mb-10 justify-center lg:justify-start">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg border border-white/20 p-1.5 overflow-hidden">
-                <img src="/logo.png" alt="Logo" className="w-full h-full object-contain brightness-0 invert" />
+              <div className="flex h-12 items-center rounded-2xl bg-white px-2 shadow-lg border border-white/20 overflow-hidden">
+                <img src="/logo.png" alt="FarmicleGrow Logo" className="h-9 w-auto object-contain" />
               </div>
-              <span className="text-2xl font-black text-[var(--color-heading)] tracking-tighter">FarmicleGrow</span>
             </div>
 
             <form className='grid gap-8' onSubmit={onSubmit}>

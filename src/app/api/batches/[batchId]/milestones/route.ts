@@ -85,6 +85,12 @@ export async function GET(
     const user = auth.user;
     const organizationId = requireOrgScope(user);
     const { batchId } = await params;
+    if (user.roles.includes("farmer")) {
+      return NextResponse.json(
+        { message: "Farmer self-service is not supported in this release." },
+        { status: 403 },
+      );
+    }
 
     const batch = await prisma.batch.findFirst({
       where: { batchId, organizationId },
@@ -93,16 +99,6 @@ export async function GET(
 
     if (!batch) {
       return NextResponse.json({ message: "Batch not found" }, { status: 404 });
-    }
-
-    if (user.roles.includes("farmer")) {
-      const farmer = await prisma.farmer.findFirst({
-        where: { externalRef: user.id, organizationId },
-        select: { id: true },
-      });
-      if (!farmer || farmer.id !== batch.farmerId) {
-        return NextResponse.json({ message: "Unauthorized." }, { status: 403 });
-      }
     }
 
     const milestones = await prisma.batchMilestone.findMany({

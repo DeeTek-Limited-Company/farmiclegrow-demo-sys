@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth/server";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
+import { requireOrgScope } from "@/lib/tenant/scope";
 import { 
   User, 
   MapPin, 
@@ -21,8 +22,6 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertCircle,
-  Copy,
-  Lock,
   ArrowLeft
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -41,11 +40,12 @@ interface PageProps {
 export default async function FarmerProfilePage({ params }: PageProps) {
   const { farmerId } = await params;
   const currentUser = await requireRole(["admin", "agronomist", "ops"]);
+  const organizationId = requireOrgScope(currentUser);
 
   const districtIds =
     currentUser.roles.includes("agronomist") && !currentUser.roles.includes("admin") && !currentUser.roles.includes("ops")
       ? (await prisma.agronomistDistrict.findMany({
-          where: { agronomistId: currentUser.id },
+          where: { agronomistId: currentUser.id, organizationId },
           select: { districtId: true },
         })).map((a) => a.districtId)
       : null;
@@ -54,6 +54,7 @@ export default async function FarmerProfilePage({ params }: PageProps) {
   const farmer = await prisma.farmer.findFirst({
     where: {
       id: farmerId,
+      organizationId,
       ...(districtIds ? { community: { districtId: { in: districtIds.length ? districtIds : ["__none__"] } } } : {})
     },
     include: {
@@ -99,19 +100,11 @@ export default async function FarmerProfilePage({ params }: PageProps) {
     return notFound();
   }
 
-  // 2. Fetch associated user account (for temporary password)
-  const userAccount = farmer.externalRef 
-    ? await prisma.user.findUnique({ where: { id: farmer.externalRef } })
-    : null;
-
-  // 3. Fetch specific audit logs for this farmer
+  // Fetch recent audit logs for this farmer within the active organization.
   const auditLogs = await prisma.auditLog.findMany({
     where: {
+      organizationId,
       OR: [
-        ...(farmer.externalRef ? [
-          { userId: farmer.externalRef }, // Actions by the farmer
-          { details: { path: ["createdUserId"], equals: farmer.externalRef } } // User creation log
-        ] : []),
         { details: { path: ["farmerId"], equals: farmer.id } }, // Actions on the farmer
       ]
     },
@@ -162,6 +155,9 @@ export default async function FarmerProfilePage({ params }: PageProps) {
             </div>
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-slate-500 font-medium">
               <span className="flex items-center gap-1.5"><Phone className="w-4 h-4 text-slate-400" /> {farmer.phone}</span>
+              {farmer.email ? (
+                <span className="flex items-center gap-1.5"><Mail className="w-4 h-4 text-slate-400" /> {farmer.email}</span>
+              ) : null}
               {farmer.ghanaCardNumber && (
                 <span className="flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-slate-400" /> {farmer.ghanaCardNumber}</span>
               )}
@@ -627,37 +623,6 @@ export default async function FarmerProfilePage({ params }: PageProps) {
 
         {/* Right Column: Status, Docs & Audit */}
         <div className="space-y-8">
-          
-          {/* Security & Access Card */}
-          {userAccount?.temporaryPassword && (
-            <Card className="border-0 bg-amber-50 shadow-xl shadow-amber-100/20 rounded-[2rem] overflow-hidden border-2 border-amber-100/50 animate-pulse-subtle">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center gap-2 text-amber-800">
-                  <Lock className="w-5 h-5" />
-                  <h3 className="font-bold">Initial Access Details</h3>
-                </div>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600/70">Login Email</p>
-                    <div className="bg-white/80 p-3 rounded-xl border border-amber-200/50 font-bold text-slate-700 text-sm">{userAccount.email}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600/70">Temp Password</p>
-                    <div className="bg-white/80 p-3 rounded-xl border border-amber-200/50 font-mono font-black text-blue-700 tracking-widest text-sm flex items-center justify-between">
-                      {userAccount.temporaryPassword}
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-amber-400 hover:text-amber-600">
-                        <Copy className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-[10px] text-amber-700/60 font-medium italic">
-                  * This is only visible until the farmer completes their first password change.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Document Vault Card */}
           <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
             <CardHeader className="bg-slate-50/30 border-b border-slate-100 p-6">

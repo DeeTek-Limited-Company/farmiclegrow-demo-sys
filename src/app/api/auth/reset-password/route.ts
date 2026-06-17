@@ -26,7 +26,6 @@ export async function POST(request: Request) {
       data: {
         passwordHash,
         mustChangePassword: false,
-        temporaryPassword: null, // Clear the temporary password once changed
       },
       include: {
         userRoles: {

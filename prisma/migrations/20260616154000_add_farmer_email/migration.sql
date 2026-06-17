@@ -1,0 +1,2 @@
+ALTER TABLE "Farmer"
+ADD COLUMN "email" TEXT;

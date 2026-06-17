@@ -198,13 +198,18 @@ export default async function AgronomistPage({ params }: PageProps) {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div className="space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Field workspace</p>
           <h1 className="text-4xl font-black tracking-tight text-slate-900">Field Overview</h1>
-          <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-            Welcome back, <span className="text-primary font-bold">{user.name}</span>. 
-            Here's what's happening in your territory today.
-          </p>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-slate-700 sm:text-lg">
+              Welcome back, <span className="font-black text-primary">{user.name}</span>
+            </p>
+            <p className="max-w-2xl text-sm font-medium leading-6 text-slate-500 sm:text-base">
+              Here&apos;s a quick view of what needs attention across your territory today.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button asChild className="rounded-2xl h-12 px-6 shadow-xl shadow-primary/20 transition-all hover:scale-105 active:scale-95">
@@ -216,7 +221,7 @@ export default async function AgronomistPage({ params }: PageProps) {
         </div>
       </div>
 
-      <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
+      <Card className="rounded-[2.5rem] border-0 bg-white shadow-2xl shadow-slate-200/50 overflow-hidden">
         <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">

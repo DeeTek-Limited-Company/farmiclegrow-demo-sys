@@ -1,14 +1,16 @@
 import { requireRole } from "@/lib/auth/server";
 import { OnboardingManager } from "@/components/agronomist/onboarding-manager";
 import { prisma } from "@/lib/prisma";
+import { requireOrgScope } from "@/lib/tenant/scope";
 
 export default async function OnboardingPage() {
   const user = await requireRole(["admin", "agronomist"]);
+  const organizationId = requireOrgScope(user);
   
   // Ownership Filtering: Agronomists only see their own submissions
   const whereClause = user.roles.includes("admin")
-    ? {}
-    : { submissions: { some: { submittedById: user.id } } };
+    ? { organizationId }
+    : { organizationId, submissions: { some: { submittedById: user.id, organizationId } } };
 
   const farmers = await prisma.farmer.findMany({
     where: whereClause,

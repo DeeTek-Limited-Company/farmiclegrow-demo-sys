@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { SubmissionDecisionPanel } from "@/components/admin/submission-decision-panel";
 import { requireOrgScope } from "@/lib/tenant/scope";
+import { getSubmissionApprovalBlockers } from "@/lib/onboarding/approval-blockers";
 import {
   ArrowLeft,
   User,
@@ -63,13 +64,7 @@ export default async function AdminSubmissionDetailPage({ params }: PageProps) {
   const dqLabel = dq >= 80 ? "Verified" : dq >= 50 ? "Needs Review" : "Invalid";
   const dqTone = dq >= 80 ? "bg-emerald-50 border-emerald-100 text-emerald-700" : dq >= 50 ? "bg-amber-50 border-amber-100 text-amber-700" : "bg-red-50 border-red-100 text-red-700";
 
-  const missing: string[] = [];
-  if (!farmer.phone) missing.push("Phone");
-  if (!farmer.ghanaCardNumber) missing.push("Ghana Card");
-  if (!profile?.farmName) missing.push("Farm Name");
-  if (!farmer.primaryCrop) missing.push("Primary Crop");
-  if (!hasGps) missing.push("GPS Location");
-  if (location && !location.isValidated) missing.push("GPS Validation");
+  const missing = getSubmissionApprovalBlockers(farmer);
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">

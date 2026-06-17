@@ -225,7 +225,6 @@ export async function POST(request: Request) {
         recipients.add(actor.id);
         adminIds.forEach((a) => recipients.add(a.userId));
         opsIds.forEach((o) => recipients.add(o.userId));
-        if (created.farmer.externalRef) recipients.add(created.farmer.externalRef);
 
         await tx.notification.createMany({
           data: Array.from(recipients).map((userId) => ({

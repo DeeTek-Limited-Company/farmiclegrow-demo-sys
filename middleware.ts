@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, type AppRole } from "@/lib/auth/constants";
 import { verifySessionToken } from "@/lib/auth/session";
-import { rateLimiter } from "@/lib/security/rate-limit";
+import { getWriteRateLimitPolicy, rateLimiter } from "@/lib/security/rate-limit";
 
 const roleRouteMap: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/super-admin", roles: ["super_admin"] },
@@ -104,8 +104,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/admin") ||
     pathname.startsWith("/agronomist") ||
-    pathname.startsWith("/ops") ||
-    pathname.startsWith("/farmer")
+    pathname.startsWith("/ops")
   ) {
     const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
     const cookieOrgSlug = request.cookies.get("org_slug")?.value;
@@ -150,12 +149,14 @@ export async function middleware(request: NextRequest) {
   // 5. API Route Protection
   if (pathname.startsWith("/api")) {
     const isPublicApi = pathname.startsWith("/api/public") || pathname.startsWith("/api/auth") || pathname.startsWith("/api/health");
+    let apiUserId: string | null = null;
     
     if (!isPublicApi) {
       const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
       if (token) {
         try {
           const payload = await verifySessionToken(token);
+          apiUserId = payload.sub;
           if (payload.organizationId && payload.organizationStatus !== "ACTIVE" && payload.organizationStatus !== "TRIAL") {
             return new NextResponse(JSON.stringify({ message: "Organization is inactive." }), {
               status: 403,
@@ -169,12 +170,18 @@ export async function middleware(request: NextRequest) {
     }
 
     // Rate limiting for API writes
-    if (!pathname.startsWith("/api/auth/login") && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-      const limitCheck = rateLimiter.check(ip, 50);
+    const writePolicy = getWriteRateLimitPolicy({
+      pathname,
+      method: request.method,
+      ip,
+      userId: apiUserId,
+    });
+    if (writePolicy) {
+      const limitCheck = rateLimiter.check(writePolicy.key, writePolicy.limit, writePolicy.windowMs);
       if (!limitCheck.success) {
         return new NextResponse("Too many requests", { status: 429 });
       }
-      rateLimiter.fail(ip, 50, 60000);
+      rateLimiter.fail(writePolicy.key, writePolicy.limit, writePolicy.windowMs);
     }
   }
 

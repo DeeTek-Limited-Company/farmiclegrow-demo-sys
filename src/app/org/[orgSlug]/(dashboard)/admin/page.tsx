@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth/server";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ReviewQueue } from "@/components/admin/review-queue";
 import { AnalyticsCharts } from "@/components/admin/analytics-charts";
+import { MetricCard } from "@/components/dashboard/metric-card";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
@@ -10,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { LocationValidateButton } from "@/components/agronomist/location-validate-button";
 import { format } from "date-fns";
 import { ArrowUpRight, MapPin, Package, ShieldCheck, TrendingUp, Users, Bell, AlertCircle } from "lucide-react";
-import type { ReactNode } from "react";
 import { requireOrgScope } from "@/lib/tenant/scope";
+import { buildAdminKpis } from "@/lib/dashboard/admin-kpis";
 
 type PageProps = {
   params: Promise<{ orgSlug: string }>;
@@ -130,34 +131,9 @@ export default async function AdminPage({ params }: PageProps) {
       orderBy: { createdAt: "desc" },
       take: 10
     }),
-    prisma.marketplaceListing.count({ where: { organizationId } })
-  ]) as unknown as [
-      number,
-      number,
-      number,
-      any[],
-      any[],
-      number,
-      any,
-      any[],
-      any[],
-      number,
-      number,
-      any,
-      number,
-      any,
-      number,
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      number,
-    ];
+    prisma.marketplaceListing.count({ where: { organizationId } }),
+    prisma.order.count({ where: { organizationId } })
+  ]);
 
   const [
     pendingCount,
@@ -183,7 +159,8 @@ export default async function AdminPage({ params }: PageProps) {
     activeNoPlantingCycles,
     harvestedNoBatchCycles,
     unlistedBatches,
-    activeListingsCount
+    activeListingsCount,
+    totalOrders,
   ] = results;
   const serializedPendingSubmissions = JSON.parse(JSON.stringify(pendingSubmissions));
 
@@ -208,6 +185,18 @@ export default async function AdminPage({ params }: PageProps) {
     value: c._count._all
   })).sort((a, b) => b.value - a.value).slice(0, 5);
 
+  const adminKpis = buildAdminKpis({
+    totalFarmers,
+    pendingCount,
+    activeCycles,
+    totalBatches,
+    unvalidatedLocationsCount,
+    avgQuality,
+    activeListingsCount,
+    totalOrders,
+    orgBase,
+  });
+
   const harvestBacklog = harvestedCandidates
     .map((r: any) => {
       const harvested = r.quantityTon ? Number(r.quantityTon) : null;
@@ -227,15 +216,17 @@ export default async function AdminPage({ params }: PageProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <KpiCard title="Total Farmers" value={totalFarmers.toLocaleString()} href={`${orgBase}/admin/farmers`} icon={<Users className="w-4 h-4" />} />
-        <KpiCard title="Pending Reviews" value={pendingCount.toLocaleString()} href={`${orgBase}/admin`} tone="amber" icon={<AlertCircle className="w-4 h-4" />} />
-        <KpiCard title="Active Cycles" value={activeCycles.toLocaleString()} href={`${orgBase}/agronomist/production`} tone="blue" icon={<TrendingUp className="w-4 h-4" />} />
-        <KpiCard title="Batches" value={totalBatches.toLocaleString()} href={`${orgBase}/agronomist/batches`} tone="slate" icon={<Package className="w-4 h-4" />} />
-        <KpiCard title="Unvalidated GPS" value={unvalidatedLocationsCount.toLocaleString()} href={`${orgBase}/agronomist/locations`} tone="amber" icon={<MapPin className="w-4 h-4" />} />
-        <KpiCard title="Avg Quality" value={`${avgQuality}/100`} href={`${orgBase}/admin/farmers`} tone="emerald" icon={<ShieldCheck className="w-4 h-4" />} />
-        <KpiCard title="Market Listings" value={activeListingsCount.toLocaleString()} href={`${orgBase}/admin/inventory`} tone="blue" icon={<TrendingUp className="w-4 h-4" />} />
-        <KpiCard title="Orders" value={totalBatches.toLocaleString()} href={`${orgBase}/admin/orders`} tone="slate" icon={<Package className="w-4 h-4" />} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+        {adminKpis.map((card) => (
+          <MetricCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            description={card.description}
+            href={card.href}
+            tone={card.tone}
+          />
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -555,45 +546,5 @@ export default async function AdminPage({ params }: PageProps) {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function KpiCard({
-  title,
-  value,
-  href,
-  icon,
-  tone = "slate",
-}: {
-  title: string;
-  value: string;
-  href: string;
-  icon: ReactNode;
-  tone?: "slate" | "emerald" | "amber" | "blue";
-}) {
-  const toneClasses: Record<string, string> = {
-    slate: "bg-slate-50/60 border-slate-200 text-slate-900",
-    emerald: "bg-emerald-50/60 border-emerald-200 text-emerald-900",
-    amber: "bg-amber-50/60 border-amber-200 text-amber-900",
-    blue: "bg-blue-50/60 border-blue-200 text-blue-900",
-  };
-
-  return (
-    <Card className={`shadow-sm ${toneClasses[tone]}`}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-          <span>{title}</span>
-          <span className="text-muted-foreground">{icon}</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex items-center justify-between gap-3">
-        <div className="text-2xl font-black">{value}</div>
-        <Button asChild variant="ghost" className="h-8 px-3 rounded-xl font-bold">
-          <Link href={href}>
-            <ArrowUpRight className="w-4 h-4" />
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
