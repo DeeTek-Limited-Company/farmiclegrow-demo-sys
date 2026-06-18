@@ -3,13 +3,8 @@ import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/auth/password";
 
-function readRequiredSeedEnv(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Missing required seed environment variable: ${name}`);
-  }
-
-  return value;
+function readOptionalSeedEnv(name: string) {
+  return process.env[name]?.trim();
 }
 
 async function seedRoles() {
@@ -108,8 +103,12 @@ async function seedDefaultOrganization() {
 }
 
 async function seedAdmin(orgId: string) {
-  const adminEmail = readRequiredSeedEnv("SEED_ADMIN_EMAIL");
-  const adminPassword = readRequiredSeedEnv("SEED_ADMIN_PASSWORD");
+  const adminEmail = readOptionalSeedEnv("SEED_ADMIN_EMAIL");
+  const adminPassword = readOptionalSeedEnv("SEED_ADMIN_PASSWORD");
+  if (!adminEmail || !adminPassword) {
+    console.log("Skipping admin seed (SEED_ADMIN_EMAIL or SEED_ADMIN_PASSWORD not set)");
+    return;
+  }
 
   const passwordHash = await hashPassword(adminPassword);
 
@@ -137,11 +136,16 @@ async function seedAdmin(orgId: string) {
     update: {},
     create: { userId: adminUser.id, roleId: adminRole.id },
   });
+  console.log("Admin user seeded successfully");
 }
 
 async function seedAgronomist(orgId: string) {
-  const agronomistEmail = readRequiredSeedEnv("SEED_AGRONOMIST_EMAIL");
-  const agronomistPassword = readRequiredSeedEnv("SEED_AGRONOMIST_PASSWORD");
+  const agronomistEmail = readOptionalSeedEnv("SEED_AGRONOMIST_EMAIL");
+  const agronomistPassword = readOptionalSeedEnv("SEED_AGRONOMIST_PASSWORD");
+  if (!agronomistEmail || !agronomistPassword) {
+    console.log("Skipping agronomist seed (SEED_AGRONOMIST_EMAIL or SEED_AGRONOMIST_PASSWORD not set)");
+    return;
+  }
   const passwordHash = await hashPassword(agronomistPassword);
 
   const user = await prisma.user.upsert({
@@ -168,11 +172,16 @@ async function seedAgronomist(orgId: string) {
     update: {},
     create: { userId: user.id, roleId: role.id },
   });
+  console.log("Agronomist user seeded successfully");
 }
 
 async function seedOpsUser(orgId: string) {
-  const opsEmail = readRequiredSeedEnv("SEED_OPS_EMAIL");
-  const opsPassword = readRequiredSeedEnv("SEED_OPS_PASSWORD");
+  const opsEmail = readOptionalSeedEnv("SEED_OPS_EMAIL");
+  const opsPassword = readOptionalSeedEnv("SEED_OPS_PASSWORD");
+  if (!opsEmail || !opsPassword) {
+    console.log("Skipping ops seed (SEED_OPS_EMAIL or SEED_OPS_PASSWORD not set)");
+    return;
+  }
   const passwordHash = await hashPassword(opsPassword);
 
   const user = await prisma.user.upsert({
@@ -199,6 +208,7 @@ async function seedOpsUser(orgId: string) {
     update: {},
     create: { userId: user.id, roleId: role.id },
   });
+  console.log("Ops user seeded successfully");
 }
 
 async function main() {
