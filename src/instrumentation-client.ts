@@ -1,5 +1,12 @@
 import * as Sentry from "@sentry/nextjs";
 
+// Extend Window type for TypeScript
+declare global {
+  interface Window {
+    __SENTRY_INITIALIZED__?: boolean;
+  }
+}
+
 // Prevent multiple initializations (common in development with hot-reloading)
 if (typeof window !== "undefined" && !window.__SENTRY_INITIALIZED__) {
   window.__SENTRY_INITIALIZED__ = true;
