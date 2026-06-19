@@ -2,10 +2,11 @@ import { requireRole } from "@/lib/auth/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileDown, BarChart3 } from "lucide-react";
+import { FileDown, BarChart3, ShieldCheck } from "lucide-react";
 
 export default async function OpsReportsPage() {
-  await requireRole(["admin", "ops"]);
+  const user = await requireRole(["admin", "ops"]);
+  const isAdmin = user.roles.includes("admin") ?? false;
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -18,6 +19,28 @@ export default async function OpsReportsPage() {
           Export operational data for oversight and partner reporting.
         </p>
       </div>
+
+      {isAdmin && (
+        <Card className="border-2 border-primary/20 shadow-2xl shadow-primary/10 rounded-[2rem] overflow-hidden bg-primary/5">
+          <CardHeader className="p-8">
+            <CardTitle className="text-2xl font-black tracking-tight flex items-center gap-3">
+              <ShieldCheck className="w-6 h-6 text-primary" />
+              Full Data Export (Admin Only)
+            </CardTitle>
+            <CardDescription className="font-medium text-lg">
+              Download a comprehensive Excel file with all your organization&apos;s data: farmers, batches, production, and more.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-8 pt-0">
+            <Button asChild className="rounded-2xl font-black h-14 w-full sm:w-auto text-lg px-10">
+              <Link href="/api/reports?kind=full-export">
+                <FileDown className="w-5 h-5 mr-2" />
+                Download Full Data Export (Excel)
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <ReportCard
