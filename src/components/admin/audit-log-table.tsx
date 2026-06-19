@@ -56,26 +56,26 @@ export function AuditLogTable({ initialLogs }: { initialLogs: AuditRow[] }) {
 
   return (
     <Card className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
-      <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
+      <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle className="text-lg font-bold flex items-center gap-2">
             <Activity className="w-5 h-5 text-primary" />
             Recent Activity
             <Badge variant="outline" className="ml-2">{filtered.length}</Badge>
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search action/user/ip/details..."
-                className="pl-9 w-72"
+                className="pl-9 w-full sm:w-72"
               />
             </div>
 
             <Select value={status} onValueChange={(v) => setStatus(v as any)}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -86,7 +86,7 @@ export function AuditLogTable({ initialLogs }: { initialLogs: AuditRow[] }) {
             </Select>
 
             <Select value={action} onValueChange={setAction}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-full sm:w-56">
                 <SelectValue placeholder="Action" />
               </SelectTrigger>
               <SelectContent>
@@ -100,16 +100,16 @@ export function AuditLogTable({ initialLogs }: { initialLogs: AuditRow[] }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-x-auto">
         <Table>
           <TableHeader className="bg-slate-50/30">
             <TableRow className="hover:bg-transparent border-slate-100">
-              <TableHead className="w-[180px] font-bold uppercase text-[10px] tracking-widest p-6">Timestamp</TableHead>
+              <TableHead className="font-bold uppercase text-[10px] tracking-widest p-4">Timestamp</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest">Action</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest">User ID</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest">Status</TableHead>
-              <TableHead className="font-bold uppercase text-[10px] tracking-widest">Origin</TableHead>
-              <TableHead className="font-bold uppercase text-[10px] tracking-widest p-6 text-right">Details</TableHead>
+              <TableHead className="font-bold uppercase text-[10px] tracking-widest hidden sm:table-cell">Origin</TableHead>
+              <TableHead className="font-bold uppercase text-[10px] tracking-widest p-4 text-right">Details</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -122,7 +122,7 @@ export function AuditLogTable({ initialLogs }: { initialLogs: AuditRow[] }) {
             ) : (
               filtered.map((log) => (
                 <TableRow key={log.id} className="border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                  <TableCell className="p-6">
+                  <TableCell className="p-4">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
@@ -152,13 +152,13 @@ export function AuditLogTable({ initialLogs }: { initialLogs: AuditRow[] }) {
                       {log.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                       <Globe className="w-3.5 h-3.5 text-slate-300" />
                       {log.ip || "Unknown"}
                     </div>
                   </TableCell>
-                  <TableCell className="p-6 text-right">
+                  <TableCell className="p-4 text-right">
                     <pre className="text-[10px] font-mono text-slate-400 bg-slate-50 p-2 rounded-lg inline-block max-w-[200px] truncate group-hover:max-w-none group-hover:whitespace-pre-wrap transition-all">
                       {JSON.stringify(log.details)}
                     </pre>
