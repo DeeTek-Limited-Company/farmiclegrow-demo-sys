@@ -291,19 +291,19 @@ export function OrganizationManager({
 
   return (
     <div className="space-y-8 pb-12">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-slate-900">Platform Control</h1>
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Platform Control</h1>
           <p className="text-slate-500 mt-1 font-medium">Global management for FarmicleGrow Enterprise.</p>
         </div>
-        <Button onClick={refresh} variant="outline" className="rounded-xl font-bold h-12 shadow-sm bg-white" disabled={isRefreshing}>
+        <Button onClick={refresh} variant="outline" className="rounded-xl font-bold h-12 shadow-sm bg-white w-full md:w-auto" disabled={isRefreshing}>
           {isRefreshing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
           Refresh Global State
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-2">
@@ -415,12 +415,12 @@ export function OrganizationManager({
       </div>
 
       <Tabs defaultValue="organizations" className="space-y-6">
-        <TabsList className="bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50">
-          <TabsTrigger value="organizations" className="rounded-xl font-bold px-6 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+        <TabsList className="bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50 overflow-x-auto w-full flex-nowrap">
+          <TabsTrigger value="organizations" className="rounded-xl font-bold px-6 data-[state=active]:bg-white data-[state=active]:shadow-sm flex-shrink-0">
             <Building2 className="w-4 h-4 mr-2" />
             Organizations
           </TabsTrigger>
-          <TabsTrigger value="audit" className="rounded-xl font-bold px-6 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="audit" className="rounded-xl font-bold px-6 data-[state=active]:bg-white data-[state=active]:shadow-sm flex-shrink-0">
             <History className="w-4 h-4 mr-2" />
             Platform Audit
           </TabsTrigger>
@@ -437,8 +437,8 @@ export function OrganizationManager({
               </CardHeader>
               <CardContent className="p-6">
                 <form className="space-y-4" onSubmit={createOrg}>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2 col-span-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2 col-span-1 sm:col-span-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Organization Name</Label>
                       <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Farms" className="rounded-xl" />
                     </div>
@@ -458,7 +458,7 @@ export function OrganizationManager({
                       <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Phone</Label>
                       <Input value={orgPhone} onChange={(e) => setOrgPhone(e.target.value)} placeholder="+233..." className="rounded-xl" />
                     </div>
-                    <div className="space-y-2 col-span-2">
+                    <div className="space-y-2 col-span-1 sm:col-span-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Subscription Plan</Label>
                       <Select value={orgPlan} onValueChange={setOrgPlan}>
                         <SelectTrigger className="rounded-xl">
@@ -490,8 +490,8 @@ export function OrganizationManager({
               </CardHeader>
               <CardContent className="p-6">
                 <form className="space-y-4" onSubmit={createTenantAdmin}>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2 col-span-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2 col-span-1 sm:col-span-2">
                       <Label className="font-bold text-xs uppercase tracking-widest text-slate-400">Organization</Label>
                       <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
                         <SelectTrigger className="rounded-xl h-11">
@@ -538,7 +538,7 @@ export function OrganizationManager({
             <CardHeader className="bg-slate-50/50 border-b border-slate-100">
               <CardTitle className="text-xl font-black">Registered Organizations</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">

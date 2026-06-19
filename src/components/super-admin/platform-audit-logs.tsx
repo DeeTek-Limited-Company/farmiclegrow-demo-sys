@@ -60,12 +60,12 @@ export function PlatformAuditLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input 
             placeholder="Search logs by action or organization..." 
-            className="pl-10 rounded-xl border-slate-200"
+            className="pl-10 rounded-xl border-slate-200 w-full"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -79,7 +79,7 @@ export function PlatformAuditLogs() {
             Platform Activity
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />

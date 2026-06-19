@@ -354,8 +354,262 @@ export async function GET(request: Request) {
     return respond(rows, "location-validation");
   }
 
+  if (kind === "full-export") {
+    // Only admins can download full exports
+    const isAdmin = auth.user?.roles.includes("admin");
+    if (!isAdmin) {
+      return NextResponse.json(
+        { message: "Only administrators can download full data exports" },
+        { status: 403 }
+      );
+    }
+
+    // Fetch all data types in parallel
+    const [
+      farmers,
+      farmProfiles,
+      productionRecords,
+      fieldActivities,
+      harvests,
+      batches,
+      inputTraceability
+    ] = await Promise.all([
+      // Farmers
+      prisma.farmer.findMany({
+        where: { organizationId },
+        include: {
+          community: { include: { district: { include: { region: true } } } },
+          submissions: { orderBy: { submittedAt: "desc" }, take: 1 },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      }),
+      // Farm Profiles & Locations (flattened)
+      prisma.farmProfile.findMany({
+        where: { organizationId },
+        include: {
+          farmer: true,
+          locations: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10000,
+      }),
+      // Production Cycles
+      prisma.productionRecord.findMany({
+        where: { organizationId },
+        include: { farmer: true },
+        orderBy: { createdAt: "desc" },
+        take: 10000,
+      }),
+      // Field Activities
+      prisma.fieldActivity.findMany({
+        where: { organizationId },
+        include: { farmer: true, plot: true, productionRecord: true },
+        orderBy: [{ activityDate: "desc" }, { createdAt: "desc" }],
+        take: 20000,
+      }),
+      // Harvests & Quality Tests
+      prisma.harvestRecord.findMany({
+        where: { organizationId },
+        include: {
+          farmer: true,
+          plot: true,
+          productionRecord: true,
+          qualityTests: { orderBy: { dateTested: "desc" }, take: 1 },
+        },
+        orderBy: [{ harvestDate: "desc" }, { createdAt: "desc" }],
+        take: 20000,
+      }),
+      // Batches
+      prisma.batch.findMany({
+        where: { organizationId },
+        include: { farmer: true },
+        orderBy: { createdAt: "desc" },
+        take: 10000,
+      }),
+      // Input Traceability
+      prisma.inputTraceability.findMany({
+        where: { organizationId },
+        include: { farmer: true, plot: true },
+        orderBy: [{ applicationDate: "desc" }, { createdAt: "desc" }],
+        take: 20000,
+      }),
+    ]);
+
+    // Process all datasets
+    const farmerRows = farmers.map((f) => {
+      const canonicalCommunity = f.community || null;
+      const canonicalDistrict = canonicalCommunity?.district || null;
+      const canonicalRegion = canonicalDistrict?.region || null;
+      const secondary = Array.isArray(f.secondaryCrops) ? f.secondaryCrops.filter(Boolean).join("; ") : null;
+      return {
+        farmerId: f.id,
+        fullName: f.fullName,
+        phone: f.phone,
+        ghanaCardNumber: f.ghanaCardNumber,
+        qualityScore: f.qualityScore,
+        status: f.submissions[0]?.status,
+        primaryCrop: f.primaryCrop,
+        secondaryCrops: secondary,
+        region: canonicalRegion?.name ?? null,
+        district: canonicalDistrict?.name ?? null,
+        community: canonicalCommunity?.name ?? null,
+        createdAt: f.createdAt.toISOString(),
+        updatedAt: f.updatedAt.toISOString(),
+      };
+    });
+
+    const farmProfileRows = farmProfiles.flatMap((fp) => {
+      const locations = fp.locations.length ? fp.locations : [null];
+      return locations.map((loc) => ({
+        farmProfileId: fp.id,
+        farmerId: fp.farmerId,
+        farmerName: fp.farmer.fullName,
+        farmName: fp.farmName,
+        farmSize: fp.farmSize?.toString(),
+        farmSizeUnit: fp.farmSizeUnit,
+        ownershipType: fp.ownershipType,
+        irrigationType: fp.irrigationType,
+        numberOfPlots: fp.numberOfPlots,
+        totalAreaHectare: fp.totalAreaHectare?.toString(),
+        locationId: loc?.id ?? null,
+        latitude: loc?.latitude?.toString() ?? null,
+        longitude: loc?.longitude?.toString() ?? null,
+        address: loc?.address ?? null,
+        locationValidated: loc?.isValidated ?? null,
+        createdAt: fp.createdAt.toISOString(),
+      }));
+    });
+
+    const productionRows = productionRecords.map((r) => ({
+      productionRecordId: r.id,
+      farmerId: r.farmerId,
+      farmerName: r.farmer.fullName,
+      season: r.season,
+      cropType: r.cropType,
+      status: r.status,
+      plantingDate: r.plantingDate ? r.plantingDate.toISOString() : null,
+      expectedHarvestDate: r.expectedHarvestDate ? r.expectedHarvestDate.toISOString() : null,
+      actualHarvestDate: (r as any).actualHarvestDate ? new Date((r as any).actualHarvestDate).toISOString() : (r as any).harvestDate ? new Date((r as any).harvestDate).toISOString() : null,
+      expectedYieldTon: r.expectedYieldTon?.toString(),
+      quantityTon: r.quantityTon?.toString(),
+      actualYieldTon: r.actualYieldTon?.toString(),
+      farmSizeHectares: r.farmSizeHectares?.toString(),
+      farmingMethod: r.farmingMethod,
+      createdAt: r.createdAt.toISOString(),
+    }));
+
+    const fieldActivityRows = fieldActivities.map((a) => ({
+      fieldActivityId: a.id,
+      farmerId: a.farmerId,
+      farmerName: a.farmer.fullName,
+      plotId: a.plotId,
+      plotName: a.plot?.plotName ?? null,
+      productionRecordId: a.productionRecordId,
+      productionSeason: a.productionRecord?.season ?? null,
+      activityType: a.activityType,
+      activityDate: a.activityDate.toISOString(),
+      labourUsed: a.labourUsed,
+      inputUsed: a.inputUsed,
+      quantityApplied: a.quantityApplied?.toString(),
+      quantityUnit: a.quantityUnit,
+      weatherCondition: a.weatherCondition,
+      performedBy: a.performedBy,
+      supervisorVerified: a.supervisorVerified,
+      createdAt: a.createdAt.toISOString(),
+    }));
+
+    const harvestRows = harvests.map((h) => {
+      const qt = h.qualityTests[0] ?? null;
+      return {
+        harvestId: h.id,
+        farmerId: h.farmerId,
+        farmerName: h.farmer.fullName,
+        plotId: h.plotId,
+        plotName: h.plot?.plotName ?? null,
+        productionRecordId: h.productionRecordId,
+        harvestDate: h.harvestDate.toISOString(),
+        crop: h.crop,
+        variety: h.variety,
+        quantityHarvested: h.quantityHarvested?.toString(),
+        unit: h.unit,
+        harvestMethod: h.harvestMethod,
+        initialQualityGrade: h.initialQualityGrade,
+        moistureReading: h.moistureReading?.toString(),
+        supervisorApproved: h.supervisorApproved,
+        latestTestPassed: qt?.passed ?? null,
+        latestTestDate: qt?.dateTested ? qt.dateTested.toISOString() : null,
+        createdAt: h.createdAt.toISOString(),
+      };
+    });
+
+    const batchRows = batches.map((b) => ({
+      batchId: b.batchId,
+      crop: b.crop,
+      quantityTon: b.quantity.toString(),
+      harvestDate: b.harvestDate.toISOString(),
+      farmerId: b.farmerId,
+      farmerName: b.farmer.fullName,
+      productionRecordId: b.productionRecordId,
+      traceUrl: b.qrCode,
+      publicVisibility: b.publicTraceVisibility,
+      createdAt: b.createdAt.toISOString(),
+    }));
+
+    const inputRows = inputTraceability.map((i) => ({
+      inputId: i.id,
+      farmerId: i.farmerId,
+      farmerName: i.farmer.fullName,
+      plotId: i.plotId,
+      plotName: i.plot?.plotName ?? null,
+      inputCategory: i.inputCategory,
+      productName: i.productName,
+      manufacturer: i.manufacturer,
+      batchNumber: i.batchNumber,
+      supplier: i.supplier,
+      purchaseDate: i.purchaseDate ? i.purchaseDate.toISOString() : null,
+      expiryDate: i.expiryDate ? i.expiryDate.toISOString() : null,
+      quantityUsed: i.quantityUsed?.toString(),
+      quantityUnit: i.quantityUnit,
+      applicationDate: i.applicationDate ? i.applicationDate.toISOString() : null,
+      createdAt: i.createdAt.toISOString(),
+    }));
+
+    // Create Excel workbook with multiple sheets
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.utils.book_new();
+
+    // Add each dataset as a sheet
+    const sheets = [
+      { name: "Farmers", data: farmerRows },
+      { name: "Farm Profiles", data: farmProfileRows },
+      { name: "Production Cycles", data: productionRows },
+      { name: "Field Activities", data: fieldActivityRows },
+      { name: "Harvest & Quality", data: harvestRows },
+      { name: "Batches", data: batchRows },
+      { name: "Input Traceability", data: inputRows },
+    ];
+
+    sheets.forEach((sheet) => {
+      const worksheet = XLSX.utils.json_to_sheet(sheet.data);
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+    });
+
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    const body = new Uint8Array(buffer);
+    const today = new Date().toISOString().slice(0, 10);
+
+    return new NextResponse(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="farmiclegrow-full-export-${today}.xlsx"`,
+      },
+    });
+  }
+
   return NextResponse.json(
-    { message: "Invalid kind. Use kind=farmers|production|batches|inputs|field-activities|harvest-quality|location-validation" },
+    { message: "Invalid kind. Use kind=farmers|production|batches|inputs|field-activities|harvest-quality|location-validation|full-export" },
     { status: 400 }
   );
 }

@@ -209,14 +209,14 @@ export default async function AdminPage({ params }: PageProps) {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Admin Dashboard</h1>
           <p className="text-muted-foreground mt-2">Platform oversight and application review.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {adminKpis.map((card) => (
           <MetricCard
             key={card.title}
@@ -281,7 +281,7 @@ export default async function AdminPage({ params }: PageProps) {
 
       <AnalyticsCharts registrationData={registrationData} cropData={cropData} currentYieldTon={totalYield} targetYieldTon={annualTargetTon} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Unvalidated Locations</CardTitle>

@@ -276,8 +276,8 @@ export function getDashboardNavGroups(userRole: string): DashboardNavGroup[] {
           group: "Intelligence",
           items: [
             {
-              name: "Platform Reports",
-              href: "/admin/reports",
+              name: "Reports",
+              href: "/ops/reports",
               icon: FileText,
               priority: "secondary",
             },
@@ -406,6 +406,17 @@ export function getDashboardNavGroups(userRole: string): DashboardNavGroup[] {
               name: "Warehouse Entry",
               href: "/agronomist/warehousing",
               icon: Warehouse,
+              priority: "secondary",
+            },
+          ],
+        },
+        {
+          group: "Intelligence",
+          items: [
+            {
+              name: "Reports",
+              href: "/ops/reports",
+              icon: FileText,
               priority: "secondary",
             },
           ],
