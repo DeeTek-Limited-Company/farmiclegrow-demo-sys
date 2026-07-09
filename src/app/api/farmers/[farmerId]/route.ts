@@ -5,12 +5,18 @@ import { requireApiRole } from "@/lib/auth/guards";
 import { recomputeFarmerQualityScore } from "@/lib/quality-score";
 import { logAudit } from "@/lib/security/audit";
 import { requireOrgScope } from "@/lib/tenant/scope";
+import { isAllowedDocumentReference, isAllowedImageReference } from "@/lib/uploads";
 
 const certificationSchema = z.object({
   name: z.string().trim().min(1).max(200),
   issuingBody: z.string().trim().max(200).optional().or(z.literal("")),
   expiryDate: z.string().optional(),
-  documentUrl: z.string().trim().url().optional().or(z.literal("")),
+  documentUrl: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine((value) => (!value ? true : isAllowedDocumentReference(value)), "Document must be PDF/JPG/PNG (URL, local upload path, or data: URI)"),
 });
 
 const updateSchema = z.object({
@@ -22,7 +28,12 @@ const updateSchema = z.object({
   cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
   dateOfBirth: z.string().optional().or(z.literal("")),
   ghanaCardNumber: z.string().trim().max(64).optional().or(z.literal("")),
-  ghanaCardPhotoUrl: z.string().trim().url().optional().or(z.literal("")),
+  ghanaCardPhotoUrl: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine((value) => (!value ? true : isAllowedImageReference(value)), "Ghana Card photo must be JPG/PNG (URL, local upload path, or data: URI)"),
   bio: z.string().trim().max(1000).optional().or(z.literal("")),
   communityId: z.string().cuid().optional(),
   farmName: z.string().trim().min(2).max(150),
@@ -35,7 +46,12 @@ const updateSchema = z.object({
   irrigationType: z.string().trim().max(120).optional().or(z.literal("")),
   numberOfPlots: z.coerce.number().int().nonnegative().optional(),
   totalAreaHectare: z.coerce.number().positive().optional(),
-  farmSitePhotoUrl: z.string().trim().url().optional().or(z.literal("")),
+  farmSitePhotoUrl: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine((value) => (!value ? true : isAllowedImageReference(value)), "Farm site photo must be JPG/PNG (URL, local upload path, or data: URI)"),
   location: z
     .object({
       region: z.string().trim().max(120).optional().or(z.literal("")),

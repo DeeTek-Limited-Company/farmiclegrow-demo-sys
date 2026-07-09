@@ -20,7 +20,8 @@ import {
   Camera,
   Info,
   Locate,
-  Loader2
+  Loader2,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +43,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CROP_OPTIONS } from "@/lib/crops";
+import { getUploadDisplayName } from "@/lib/uploads";
 
 const steps = [
   { id: "personal", title: "Personal Info", description: "Identity & contact details", icon: User, schema: personalSchema },
@@ -52,7 +54,9 @@ const steps = [
   { id: "review", title: "Review", description: "Final verification", icon: CheckCircle2 },
 ];
 
-export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: () => void, initialData?: any }) {
+const STORAGE_KEY_PREFIX = "farmiclegrow_onboarding_draft";
+
+export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { onSuccess: () => void, onClose?: () => void, initialData?: any, orgId?: string, userId?: string }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -66,8 +70,60 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
   const [communities, setCommunities] = useState<{ id: string; name: string; districtId: string }[]>([]);
   const [districtsLoading, setDistrictsLoading] = useState(false);
   const [communitiesLoading, setCommunitiesLoading] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const ghanaCardInputRef = useRef<HTMLInputElement | null>(null);
   const farmSiteInputRef = useRef<HTMLInputElement | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Generate storage key based on whether we're creating new or editing existing
+  const getStorageKey = () => {
+    if (initialData?.id) {
+      return `${STORAGE_KEY_PREFIX}:farmer:${initialData.id}`;
+    }
+    return `${STORAGE_KEY_PREFIX}:new`;
+  };
+  
+  const storageKey = getStorageKey();
+  
+  // Clear draft from localStorage
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(storageKey);
+      setLastSavedAt(null);
+    } catch (e) {
+      console.error("Failed to clear draft:", e);
+    }
+  };
+  
+  // Restore draft values to form
+  const restoreDraft = (draftData: any, draftStep: number, replaceCertifications: (items: any[]) => void) => {
+    if (draftData?.personal) {
+      Object.entries(draftData.personal).forEach(([key, value]) => {
+        setValue(`personal.${key}` as any, value);
+      });
+    }
+    if (draftData?.location) {
+      Object.entries(draftData.location).forEach(([key, value]) => {
+        setValue(`location.${key}` as any, value);
+      });
+    }
+    if (draftData?.farm) {
+      Object.entries(draftData.farm).forEach(([key, value]) => {
+        setValue(`farm.${key}` as any, value);
+      });
+    }
+    if (draftData?.crops) {
+      Object.entries(draftData.crops).forEach(([key, value]) => {
+        setValue(`crops.${key}` as any, value);
+      });
+    }
+    if (draftData?.certifications && Array.isArray(draftData.certifications)) {
+      replaceCertifications(draftData.certifications);
+    }
+    setCurrentStep(draftStep);
+    toast.success("Draft restored!");
+  };
 
   const stopWatchingLocation = () => {
     if (watchIdRef.current !== null) {
@@ -216,10 +272,75 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
   const isFirstLoadRef = useRef(true);
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control,
     name: "certifications",
   });
+  
+  // Watch all form values for autosave
+  const formValues = watch();
+  
+  // Load draft on mount
+  useEffect(() => {
+    const loadDraft = async () => {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const { data, timestamp, step } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000; // 48 hours
+          
+          if (isRecent && data) {
+            toast("Found an unfinished onboarding draft", {
+              description: "Would you like to resume where you left off?",
+              action: {
+                label: "Resume",
+                onClick: () => restoreDraft(data, step || 0, replace),
+              },
+              duration: 15000,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load draft:", e);
+      }
+    };
+    
+    loadDraft();
+  }, [storageKey, replace]);
+  
+  // Save draft on changes with debounce
+  useEffect(() => {
+    if (isSubmitting) return;
+    
+    const saveDraft = () => {
+      setIsSaving(true);
+      try {
+        const draft = {
+          data: formValues,
+          step: currentStep,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem(storageKey, JSON.stringify(draft));
+        setLastSavedAt(Date.now());
+      } catch (e) {
+        console.error("Failed to save draft:", e);
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(saveDraft, 500);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formValues, currentStep, isSubmitting, storageKey]);
 
   const nextStep = async () => {
     const step = steps[currentStep];
@@ -295,6 +416,9 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
       }
 
       await response.json();
+      
+      // Clear draft after successful submission
+      clearDraft();
 
       toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
       onSuccess();
@@ -418,42 +542,153 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
   }, [selectedDistrictId, districts, setValue]);
 
   return (
-    <div className="max-w-4xl mx-auto w-full px-4 py-8 pt-16 lg:pt-24">
-      {/* Stepper Header - Repositioned and with extra top margin to avoid address bar */}
-      <div className="mb-10">
-        <div className="flex justify-between items-center mb-6 px-2">
-          {steps.map((step, index) => (
-            <div key={step.id} className="flex flex-col items-center relative z-10 flex-1">
-              <div 
-                className={cn(
-                  "w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                  index <= currentStep 
-                    ? "bg-primary text-white shadow-lg ring-4 ring-primary/20" 
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                <step.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+    <div className="w-full h-full md:h-[80vh] md:max-h-[750px] max-w-7xl mx-auto px-0 sm:px-4 py-0 md:py-2">
+      <div className="lg:hidden mb-6 px-4 pt-4 sm:pt-0">
+        {/* Tablet view: horizontal steps */}
+        <div className="hidden md:flex justify-between items-center mb-4 px-2">
+          {steps.map((step, index) => {
+            const isCompleted = index < currentStep;
+            const isActive = index === currentStep;
+            const StepIcon = step.icon;
+            return (
+              <div key={step.id} className="flex flex-col items-center relative z-10 flex-1">
+                <div 
+                  className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                    isActive && "bg-primary text-white shadow-lg ring-4 ring-primary/20",
+                    isCompleted && "bg-green-600 text-white shadow-lg shadow-green-100",
+                    !isActive && !isCompleted && "bg-slate-100 text-slate-400"
+                  )}
+                >
+                  {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <StepIcon className="w-5 h-5" />}
+                </div>
+                <span className={cn(
+                  "text-[10px] uppercase font-black mt-2 text-center",
+                  isActive && "text-primary",
+                  isCompleted && "text-green-600",
+                  !isActive && !isCompleted && "text-slate-400"
+                )}>
+                  {step.title}
+                </span>
               </div>
-              <span className={cn(
-                "text-[8px] sm:text-[10px] uppercase font-black mt-2 text-center line-clamp-1 max-w-[60px] sm:max-w-none",
-                index <= currentStep ? "text-primary" : "text-muted-foreground",
-                index !== currentStep && "hidden md:block"
-              )}>
-                {step.title}
-              </span>
-            </div>
-          ))}
+            );
+          })}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="ml-4 shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-all duration-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
-        <Progress value={progress} className="h-1.5 bg-slate-100" />
+        
+        {/* Mobile view: simple text step title + progress bar */}
+        <div className="md:hidden flex items-center justify-between mb-2">
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-black uppercase text-primary tracking-widest">
+              Step {currentStep + 1} of {steps.length}
+            </span>
+            <h2 className="text-lg font-bold text-slate-800">{steps[currentStep].title}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold text-[10px] bg-slate-50 border-slate-200">
+              {steps[currentStep].description}
+            </Badge>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-all duration-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <Progress value={progress} className="h-1.5 bg-slate-100 rounded-full" />
       </div>
 
-      <Card className="border-none shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] bg-white overflow-hidden rounded-[2.5rem]">
-        <CardContent className="p-0">
-          <form onSubmit={handleSubmit(onSubmit, (errors) => {
-            console.log("Validation Errors:", errors);
-            toast.error("Please check the form for errors before completing.");
-          })}>
-            <div className="min-h-[500px] p-8 md:p-12">
+      <div className="flex flex-col lg:flex-row gap-8 items-stretch h-full md:h-[calc(100%-80px)] lg:h-full">
+        {/* Left Sticky Sidebar (Desktop only) */}
+        <div className="hidden lg:block w-80 shrink-0 bg-white rounded-[2.5rem] border border-slate-100 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] p-8 self-start sticky top-8">
+          <div className="space-y-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Onboarding</h3>
+                <p className="text-xs text-slate-500 mt-1">Complete the steps below to register the farmer.</p>
+              </div>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-all duration-200 shrink-0 -mt-1 -mr-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+            <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-100">
+              {steps.map((step, index) => {
+                const isCompleted = index < currentStep;
+                const isActive = index === currentStep;
+                const isUpcoming = index > currentStep;
+                const StepIcon = step.icon;
+                
+                return (
+                  <div key={step.id} className="flex gap-4 relative">
+                    <div 
+                      className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 relative z-10 shrink-0",
+                        isActive && "bg-primary text-white shadow-lg ring-4 ring-primary/20",
+                        isCompleted && "bg-green-600 text-white shadow-lg shadow-green-100",
+                        isUpcoming && "bg-slate-100 text-slate-400"
+                      )}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <StepIcon className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="pt-1 flex-1 min-w-0">
+                      <p className={cn(
+                        "text-xs uppercase font-black tracking-wider transition-colors",
+                        isActive && "text-primary",
+                        isCompleted && "text-green-600",
+                        isUpcoming && "text-slate-400"
+                      )}>
+                        {step.title}
+                      </p>
+                      <p className={cn(
+                        "text-[10px] text-slate-500 font-medium mt-0.5 line-clamp-1",
+                        isActive && "text-slate-600",
+                        isUpcoming && "text-slate-400"
+                      )}>
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Form Content Area */}
+        <Card className="flex-1 border-none shadow-none md:shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] bg-white overflow-hidden rounded-none md:rounded-[2.5rem] h-full">
+          <CardContent className="p-0 h-full flex flex-col">
+            <form onSubmit={handleSubmit(onSubmit, (errors) => {
+              console.log("Validation Errors:", errors);
+              toast.error("Please check the form for errors before completing.");
+            })} className="h-full flex flex-col justify-between">
+              <div className="flex-1 overflow-y-auto p-5 md:py-6 md:px-8 min-h-0">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentStep}
@@ -464,18 +699,18 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                 >
                   {/* STEP 1: Personal */}
                   {currentStep === 0 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                          <User className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                          <User className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Personal Information</h2>
-                          <p className="text-slate-500 text-sm">Basic identity details for the farmer record.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Personal Information</h2>
+                          <p className="text-slate-500 text-xs">Basic identity details for the farmer record.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="fullName">Full Name</Label>
                           <Input 
@@ -573,150 +808,152 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
                   {/* STEP 2: Location */}
                   {currentStep === 1 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                          <MapPin className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                          <MapPin className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Location Information</h2>
-                          <p className="text-slate-500 text-sm">Where the farm is physically located.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Location Information</h2>
+                          <p className="text-slate-500 text-xs">Where the farm is physically located.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <Label htmlFor="districtId">District</Label>
-                          <Select
-                            value={watch("location.districtId")}
-                            onValueChange={(v) => setValue("location.districtId", v)}
-                          >
-                            <SelectTrigger className="rounded-xl border-slate-300">
-                              <SelectValue placeholder={districtsLoading ? "Loading..." : "Select district"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {districts.length === 0 ? (
-                                <div className="p-4 text-xs font-bold text-slate-500 text-center">
-                                  No districts available. Ask an admin to assign you to a district.
-                                </div>
-                              ) : (
-                                districts.map((d) => (
-                                  <SelectItem key={d.id} value={d.id}>
-                                    {d.region.name} · {d.name}
-                                  </SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                          {errors.location?.districtId && <p className="text-red-500 text-[10px] mt-1">{errors.location.districtId.message}</p>}
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="communityId">Community</Label>
-                          <Select
-                            value={watch("location.communityId")}
-                            onValueChange={(v) => {
-                              setValue("location.communityId", v);
-                              const c = communities.find((x) => x.id === v);
-                              setValue("location.community", c?.name || "");
-                            }}
-                            disabled={!watch("location.districtId")}
-                          >
-                            <SelectTrigger className="rounded-xl border-slate-300">
-                              <SelectValue
-                                placeholder={
-                                  !watch("location.districtId")
-                                    ? "Select district first"
-                                    : communitiesLoading
-                                      ? "Loading..."
-                                      : "Select community"
-                                }
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {communities.length === 0 ? (
-                                <div className="p-4 text-xs font-bold text-slate-500 text-center">
-                                  No communities found for this district.
-                                </div>
-                              ) : (
-                                communities.map((c) => (
-                                  <SelectItem key={c.id} value={c.id}>
-                                    {c.name}
-                                  </SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                          {errors.location?.communityId && <p className="text-red-500 text-[10px] mt-1">{errors.location.communityId.message}</p>}
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="region">Region (auto)</Label>
-                          <Input
-                            id="region"
-                            value={watch("location.region") || ""}
-                            readOnly
-                            className="rounded-xl border-slate-300 bg-slate-50"
-                          />
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <Label htmlFor="lat">GPS Coordinates (Auto or Manual)</Label>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={captureLocation}
-                                disabled={isLocating}
-                                className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold"
-                              >
-                                {isLocating ? (
-                                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                      <div className="flex flex-col md:flex-row gap-6 items-start">
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                          <div className="space-y-2">
+                            <Label htmlFor="districtId">District</Label>
+                            <Select
+                              value={watch("location.districtId")}
+                              onValueChange={(v) => setValue("location.districtId", v)}
+                            >
+                              <SelectTrigger className="rounded-xl border-slate-300">
+                                <SelectValue placeholder={districtsLoading ? "Loading..." : "Select district"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {districts.length === 0 ? (
+                                  <div className="p-4 text-xs font-bold text-slate-500 text-center">
+                                    No districts available. Ask an admin to assign you to a district.
+                                  </div>
                                 ) : (
-                                  <Locate className="w-3.5 h-3.5 mr-2" />
+                                  districts.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>
+                                      {d.region.name} · {d.name}
+                                    </SelectItem>
+                                  ))
                                 )}
-                                Capture GPS
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={refineGpsLocation}
-                                disabled={isLocating}
-                                className="h-8 rounded-lg border-slate-200 font-bold"
-                              >
-                                Refine
-                              </Button>
-                            </div>
+                              </SelectContent>
+                            </Select>
+                            {errors.location?.districtId && <p className="text-red-500 text-[10px] mt-1">{errors.location.districtId.message}</p>}
                           </div>
-                          {gpsStatus ? <div className="text-xs font-bold text-slate-500">{gpsStatus}</div> : null}
-                          {gpsAccuracy !== null ? (
-                            <div className="text-xs font-bold text-slate-500">
-                              Accuracy: ~{Math.round(gpsAccuracy)}m{gpsBestAccuracy !== null ? ` · Best: ~${Math.round(gpsBestAccuracy)}m` : ""}
+
+                          <div className="space-y-2">
+                            <Label htmlFor="communityId">Community</Label>
+                            <Select
+                              value={watch("location.communityId")}
+                              onValueChange={(v) => {
+                                setValue("location.communityId", v);
+                                const c = communities.find((x) => x.id === v);
+                                setValue("location.community", c?.name || "");
+                              }}
+                              disabled={!watch("location.districtId")}
+                            >
+                              <SelectTrigger className="rounded-xl border-slate-300">
+                                <SelectValue
+                                  placeholder={
+                                    !watch("location.districtId")
+                                      ? "Select district first"
+                                      : communitiesLoading
+                                        ? "Loading..."
+                                        : "Select community"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {communities.length === 0 ? (
+                                  <div className="p-4 text-xs font-bold text-slate-500 text-center">
+                                    No communities found for this district.
+                                  </div>
+                                ) : (
+                                  communities.map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {errors.location?.communityId && <p className="text-red-500 text-[10px] mt-1">{errors.location.communityId.message}</p>}
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor="region">Region (auto)</Label>
+                            <Input
+                              id="region"
+                              value={watch("location.region") || ""}
+                              readOnly
+                              className="rounded-xl border-slate-300 bg-slate-50"
+                            />
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <div className="flex items-center justify-between mb-2">
+                              <Label htmlFor="lat">GPS Coordinates (Auto or Manual)</Label>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={captureLocation}
+                                  disabled={isLocating}
+                                  className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold"
+                                >
+                                  {isLocating ? (
+                                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                                  ) : (
+                                    <Locate className="w-3.5 h-3.5 mr-2" />
+                                  )}
+                                  Capture GPS
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={refineGpsLocation}
+                                  disabled={isLocating}
+                                  className="h-8 rounded-lg border-slate-200 font-bold"
+                                >
+                                  Refine
+                                </Button>
+                              </div>
                             </div>
-                          ) : null}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Latitude</span>
-                              <Input 
-                                id="lat" 
-                                type="number" 
-                                step="0.000001" 
-                                {...register("location.latitude", { valueAsNumber: true })}
-                                className="rounded-xl border-slate-300"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Longitude</span>
-                              <Input 
-                                id="lng" 
-                                type="number" 
-                                step="0.000001" 
-                                {...register("location.longitude", { valueAsNumber: true })}
-                                className="rounded-xl border-slate-300"
-                              />
+                            {gpsStatus ? <div className="text-xs font-bold text-slate-500">{gpsStatus}</div> : null}
+                            {gpsAccuracy !== null ? (
+                              <div className="text-xs font-bold text-slate-500">
+                                Accuracy: ~{Math.round(gpsAccuracy)}m{gpsBestAccuracy !== null ? ` · Best: ~${Math.round(gpsBestAccuracy)}m` : ""}
+                              </div>
+                            ) : null}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Latitude</span>
+                                <Input 
+                                  id="lat" 
+                                  type="number" 
+                                  step="0.000001" 
+                                  {...register("location.latitude", { valueAsNumber: true })}
+                                  className="rounded-xl border-slate-300"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Longitude</span>
+                                <Input 
+                                  id="lng" 
+                                  type="number" 
+                                  step="0.000001" 
+                                  {...register("location.longitude", { valueAsNumber: true })}
+                                  className="rounded-xl border-slate-300"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -738,7 +975,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                           )}&layer=mapnik&marker=${encodeURIComponent(`${latNum},${lngNum}`)}`;
                           const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${latNum},${lngNum}`)}`;
                           return (
-                            <div className="space-y-2 md:col-span-2">
+                            <div className="space-y-2 lg:w-1/2 w-full flex flex-col self-stretch min-h-[300px]">
                               <div className="flex items-center justify-between">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Map preview</Label>
                                 <a
@@ -750,8 +987,8 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                                   Open in Maps
                                 </a>
                               </div>
-                              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                                <iframe title="Farm location" src={src} className="h-64 w-full" loading="lazy" />
+                              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 flex-1 min-h-[250px] lg:min-h-0">
+                                <iframe title="Farm location" src={src} className="h-full w-full min-h-[250px] lg:min-h-0" loading="lazy" />
                               </div>
                             </div>
                           );
@@ -762,18 +999,18 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
                   {/* STEP 3: Farm Profile */}
                   {currentStep === 2 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                          <Sprout className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                          <Sprout className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Farm Profile</h2>
-                          <p className="text-slate-500 text-sm">General characteristics of the farm operations.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Farm Profile</h2>
+                          <p className="text-slate-500 text-xs">General characteristics of the farm operations.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2 md:col-span-2">
                           <Label htmlFor="farmName">Farm Name</Label>
                           <Input 
@@ -851,18 +1088,18 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
                   {/* STEP 4: Crops */}
                   {currentStep === 3 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                          <Trees className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                          <Trees className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Crops</h2>
-                          <p className="text-slate-500 text-sm">Capture the farmer's primary crop and optional secondary crops.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Crops</h2>
+                          <p className="text-slate-500 text-xs">Capture the farmer's primary crop and optional secondary crops.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="primaryCrop">Primary Crop</Label>
                           <Select
@@ -939,19 +1176,19 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
                   {/* STEP 5: Certifications */}
                   {currentStep === 4 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                          <Award className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                          <Award className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Certifications</h2>
-                          <p className="text-slate-500 text-sm">Add any agricultural certifications the farmer holds.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Certifications</h2>
+                          <p className="text-slate-500 text-xs">Add any agricultural certifications the farmer holds.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        <div className="p-6 rounded-2xl bg-primary/5 border border-primary/10 space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div className="p-4 md:p-5 rounded-2xl bg-primary/5 border border-primary/10 space-y-3">
                           <div className="flex items-center gap-2 text-primary">
                             <Camera className="w-5 h-5" />
                             <h3 className="font-bold">Ghana Card Photo</h3>
@@ -965,7 +1202,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                           />
                           <div
                             className={cn(
-                              "h-32 border-2 rounded-xl flex flex-col items-center justify-center bg-white group cursor-pointer transition-all relative overflow-hidden",
+                              "h-24 border-2 rounded-xl flex flex-col items-center justify-center bg-white group cursor-pointer transition-all relative overflow-hidden",
                               ghanaCardPhotoUrl ? "border-primary/30" : "border-dashed border-primary/20 hover:border-primary/40"
                             )}
                             style={ghanaCardPhotoUrl ? { backgroundImage: `url(${ghanaCardPhotoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
@@ -989,7 +1226,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                           <p className="text-[10px] text-muted-foreground italic font-medium text-center">Required for verification</p>
                         </div>
 
-                        <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                        <div className="p-4 md:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                           <div className="flex items-center gap-2 text-slate-600">
                             <MapPin className="w-5 h-5" />
                             <h3 className="font-bold">Farm Site Photo</h3>
@@ -1003,7 +1240,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                           />
                           <div
                             className={cn(
-                              "h-32 border-2 rounded-xl flex flex-col items-center justify-center bg-white group cursor-pointer transition-all relative overflow-hidden",
+                              "h-24 border-2 rounded-xl flex flex-col items-center justify-center bg-white group cursor-pointer transition-all relative overflow-hidden",
                               farmSitePhotoUrl ? "border-slate-300" : "border-dashed border-slate-200 hover:border-slate-300"
                             )}
                             style={farmSitePhotoUrl ? { backgroundImage: `url(${farmSitePhotoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
@@ -1088,11 +1325,65 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                                     }
                                   }}
                                 />
-                                <Input
+                                <input
+                                  type="hidden"
                                   {...register(`certifications.${index}.documentUrl` as const)}
-                                  placeholder="Paste a PDF/JPG/PNG link (or data: URI)"
-                                  className="rounded-xl bg-white"
                                 />
+                                {(() => {
+                                  const certificationDocumentUrl =
+                                    watch(`certifications.${index}.documentUrl` as const) || "";
+                                  if (!certificationDocumentUrl) {
+                                    return (
+                                      <Input
+                                        value={certificationDocumentUrl}
+                                        onChange={(e) =>
+                                          setValue(
+                                            `certifications.${index}.documentUrl` as const,
+                                            e.target.value,
+                                            { shouldValidate: true },
+                                          )
+                                        }
+                                        placeholder="Paste a PDF/JPG/PNG link (or data: URI)"
+                                        className="rounded-xl bg-white"
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="min-w-0">
+                                        <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">
+                                          Uploaded Document
+                                        </p>
+                                        <p className="text-sm font-semibold text-slate-700 truncate">
+                                          {getUploadDisplayName(certificationDocumentUrl)}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <a
+                                          href={certificationDocumentUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          View
+                                        </a>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          className="h-9 rounded-lg px-3 text-xs font-bold text-slate-500 hover:text-red-600"
+                                          onClick={() =>
+                                            setValue(`certifications.${index}.documentUrl` as const, "", {
+                                              shouldValidate: true,
+                                            })
+                                          }
+                                        >
+                                          Remove
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                                 {errors.certifications?.[index]?.documentUrl && (
                                   <p className="text-red-500 text-[10px] mt-1">
                                     {errors.certifications[index].documentUrl?.message as any}
@@ -1117,20 +1408,20 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
                   {/* STEP 6: Review */}
                   {currentStep === 5 && (
-                    <div className="space-y-8">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-green-100 rounded-2xl text-green-600">
-                          <CheckCircle2 className="w-6 h-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-green-100 rounded-xl text-green-600">
+                          <CheckCircle2 className="w-5 h-5" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-800">Review & Submit</h2>
-                          <p className="text-slate-500 text-sm">Please verify the information before finalizing.</p>
+                          <h2 className="text-xl font-bold text-slate-800">Review & Submit</h2>
+                          <p className="text-slate-500 text-xs">Please verify the information before finalizing.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Summary Section: Personal */}
-                        <div className="p-6 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-4">
+                        <div className="p-4 md:p-5 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-3">
                           <div className="flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 flex items-center gap-2">
                               <User className="w-4 h-4 text-primary" /> Personal
@@ -1156,7 +1447,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                         </div>
 
                         {/* Summary Section: Farm */}
-                        <div className="p-6 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-4">
+                        <div className="p-4 md:p-5 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-3">
                           <div className="flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 flex items-center gap-2">
                               <Sprout className="w-4 h-4 text-primary" /> Farm
@@ -1171,7 +1462,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
                         </div>
 
                         {/* Summary Section: Location */}
-                        <div className="p-6 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-4 md:col-span-2">
+                        <div className="p-4 md:p-5 rounded-2xl bg-slate-100/80 border border-slate-200 space-y-3 md:col-span-2 lg:col-span-3">
                           <div className="flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-primary" /> Location
@@ -1198,15 +1489,53 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
 
             {/* Footer Navigation */}
             <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <Button 
-                type="button" 
-                variant="ghost" 
-                onClick={prevStep}
-                disabled={currentStep === 0 || isSubmitting}
-                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider w-full sm:w-auto order-2 sm:order-1", currentStep === 0 && "opacity-0")}
-              >
-                <ChevronLeft className="w-4 h-4 mr-2" /> Back
-              </Button>
+              <div className="flex items-center gap-4 w-full sm:w-auto order-2 sm:order-1">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={prevStep}
+                  disabled={currentStep === 0 || isSubmitting}
+                  className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider", currentStep === 0 && "opacity-0")}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-2" /> Back
+                </Button>
+                
+                {/* Save Status */}
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                      <span>Saving...</span>
+                    </>
+                  ) : lastSavedAt ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 text-green-600" />
+                      <span>Saved {(() => {
+                        const diff = Date.now() - lastSavedAt;
+                        if (diff < 60000) return "just now";
+                        const mins = Math.floor(diff / 60000);
+                        return `${mins} min${mins > 1 ? 's' : ''} ago`;
+                      })()}</span>
+                    </>
+                  ) : null}
+                  
+                  {/* Discard Draft Button */}
+                  {lastSavedAt && !isSubmitting && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        clearDraft();
+                        toast.success("Draft discarded");
+                      }}
+                      className="h-8 rounded-lg text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 font-bold"
+                    >
+                      Discard
+                    </Button>
+                  )}
+                </div>
+              </div>
  
               {currentStep === steps.length - 1 ? (
                 <Button 
@@ -1229,6 +1558,7 @@ export function FarmerOnboardingWizard({ onSuccess, initialData }: { onSuccess: 
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
