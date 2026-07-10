@@ -220,7 +220,7 @@ export default async function FarmerProfilePage({ params }: PageProps) {
                 <DataField label="Farm Name" value={primaryProfile?.farmName} />
                 <DataField label="Farm Type" value={primaryProfile?.farmType || "N/A"} />
                 <DataField label="Primary Crop" value={farmer.primaryCrop ?? "N/A"} />
-                <DataField label="Secondary Crops" value={farmer.secondaryCrops?.join(", ") || "None"} />
+                <DataField label="Secondary Crops" value={Array.isArray(farmer.secondaryCrops) && farmer.secondaryCrops.length > 0 ? (farmer.secondaryCrops as string[]).join(", ") : "None"} />
                 <DataField label="Land Size (Hectares)" value={primaryProfile?.totalAreaHectare != null ? `${primaryProfile.totalAreaHectare.toString()} ha` : "N/A"} />
                 <DataField label="Land Size (Original)" value={primaryProfile?.farmSize != null && primaryProfile?.farmSizeUnit ? `${primaryProfile.farmSize} ${primaryProfile.farmSizeUnit}` : "N/A"} />
                 <DataField label="Land Ownership" value={primaryProfile?.ownershipType || "N/A"} />
