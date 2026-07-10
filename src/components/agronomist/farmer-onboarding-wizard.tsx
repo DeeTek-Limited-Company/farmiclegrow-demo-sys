@@ -287,9 +287,16 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
         certifications: sanitizedCertifications,
       };
 
-      // Always include crops fields
-      payload.primaryCrop = data.crops.primaryCrop;
-      payload.secondaryCrops = data.crops.secondaryCrops;
+      if (method === "POST") {
+        payload.districtId = data.location.districtId;
+        payload.crops = {
+          primaryCrop: data.crops.primaryCrop,
+          secondaryCrops: data.crops.secondaryCrops,
+        };
+      } else {
+        payload.primaryCrop = data.crops.primaryCrop;
+        payload.secondaryCrops = data.crops.secondaryCrops;
+      }
 
       console.log("Submitting payload:", JSON.stringify(payload, null, 2));
       const response = await apiFetch(url, {
