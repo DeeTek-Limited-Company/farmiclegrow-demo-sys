@@ -29,8 +29,8 @@ function preprocessPhone(v: unknown) {
 }
 
 const onboardingSchema = z.object({
-  fullName: z.string().trim().min(2).max(150),
-  email: z.string().email().optional().or(z.literal("")),
+  fullName: z.string().trim().min(1).max(150),
+  email: z.union([z.string().email(), z.literal("")]).optional().or(z.literal("")),
   phone: z.preprocess(preprocessPhone, z.string().regex(/^(?:(?:\+233|233|0)[235]\d{8})$/, "Invalid Ghana phone number")),
   cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
   gender: z.string().trim().max(40).optional().or(z.literal("")),
@@ -49,9 +49,9 @@ const onboardingSchema = z.object({
   districtId: z.string().cuid("Invalid districtId"),
   communityId: z.string().cuid("Invalid communityId"),
   
-  farmName: z.string().trim().min(2).max(150),
+  farmName: z.string().trim().min(1).max(150),
   farmType: z.string().optional(),
-  farmSize: z.coerce.number().positive().optional(),
+  farmSize: z.coerce.number().min(0).optional(),
   farmSizeUnit: z.enum(["acres", "hectares"]).optional(),
   ownershipType: z.enum(["Owned", "Rented", "Family"]).optional(),
   irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]).optional(),

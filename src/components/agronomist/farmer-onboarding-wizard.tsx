@@ -54,9 +54,7 @@ const steps = [
   { id: "review", title: "Review", description: "Final verification", icon: CheckCircle2 },
 ];
 
-const STORAGE_KEY_PREFIX = "farmiclegrow_onboarding_draft";
-
-export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { onSuccess: () => void, onClose?: () => void, initialData?: any, orgId?: string, userId?: string }) {
+export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { onSuccess: () => void, onClose?: () => void, initialData?: any }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -70,60 +68,8 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
   const [communities, setCommunities] = useState<{ id: string; name: string; districtId: string }[]>([]);
   const [districtsLoading, setDistrictsLoading] = useState(false);
   const [communitiesLoading, setCommunitiesLoading] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const ghanaCardInputRef = useRef<HTMLInputElement | null>(null);
   const farmSiteInputRef = useRef<HTMLInputElement | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Generate storage key based on whether we're creating new or editing existing
-  const getStorageKey = () => {
-    if (initialData?.id) {
-      return `${STORAGE_KEY_PREFIX}:farmer:${initialData.id}`;
-    }
-    return `${STORAGE_KEY_PREFIX}:new`;
-  };
-  
-  const storageKey = getStorageKey();
-  
-  // Clear draft from localStorage
-  const clearDraft = () => {
-    try {
-      localStorage.removeItem(storageKey);
-      setLastSavedAt(null);
-    } catch (e) {
-      console.error("Failed to clear draft:", e);
-    }
-  };
-  
-  // Restore draft values to form
-  const restoreDraft = (draftData: any, draftStep: number, replaceCertifications: (items: any[]) => void) => {
-    if (draftData?.personal) {
-      Object.entries(draftData.personal).forEach(([key, value]) => {
-        setValue(`personal.${key}` as any, value);
-      });
-    }
-    if (draftData?.location) {
-      Object.entries(draftData.location).forEach(([key, value]) => {
-        setValue(`location.${key}` as any, value);
-      });
-    }
-    if (draftData?.farm) {
-      Object.entries(draftData.farm).forEach(([key, value]) => {
-        setValue(`farm.${key}` as any, value);
-      });
-    }
-    if (draftData?.crops) {
-      Object.entries(draftData.crops).forEach(([key, value]) => {
-        setValue(`crops.${key}` as any, value);
-      });
-    }
-    if (draftData?.certifications && Array.isArray(draftData.certifications)) {
-      replaceCertifications(draftData.certifications);
-    }
-    setCurrentStep(draftStep);
-    toast.success("Draft restored!");
-  };
 
   const stopWatchingLocation = () => {
     if (watchIdRef.current !== null) {
@@ -272,75 +218,10 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
   const isFirstLoadRef = useRef(true);
 
-  const { fields, append, remove, replace } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control,
     name: "certifications",
   });
-  
-  // Watch all form values for autosave
-  const formValues = watch();
-  
-  // Load draft on mount
-  useEffect(() => {
-    const loadDraft = async () => {
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) {
-          const { data, timestamp, step } = JSON.parse(saved);
-          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000; // 48 hours
-          
-          if (isRecent && data) {
-            toast("Found an unfinished onboarding draft", {
-              description: "Would you like to resume where you left off?",
-              action: {
-                label: "Resume",
-                onClick: () => restoreDraft(data, step || 0, replace),
-              },
-              duration: 15000,
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load draft:", e);
-      }
-    };
-    
-    loadDraft();
-  }, [storageKey, replace]);
-  
-  // Save draft on changes with debounce
-  useEffect(() => {
-    if (isSubmitting) return;
-    
-    const saveDraft = () => {
-      setIsSaving(true);
-      try {
-        const draft = {
-          data: formValues,
-          step: currentStep,
-          timestamp: Date.now(),
-        };
-        localStorage.setItem(storageKey, JSON.stringify(draft));
-        setLastSavedAt(Date.now());
-      } catch (e) {
-        console.error("Failed to save draft:", e);
-      } finally {
-        setIsSaving(false);
-      }
-    };
-    
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = setTimeout(saveDraft, 500);
-    
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [formValues, currentStep, isSubmitting, storageKey]);
 
   const nextStep = async () => {
     const step = steps[currentStep];
@@ -389,21 +270,28 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
       const method = initialData ? "PUT" : "POST";
       const url = initialData ? `/api/farmers/${initialData.id}` : "/api/farmers";
 
-      const payload = {
+      // Create payload, only including fields that have values (to avoid validation issues)
+      // Also strip extra fields from certifications to match schema
+      const sanitizedCertifications = data.certifications?.map((cert: any) => ({
+        name: cert.name,
+        issuingBody: cert.issuingBody,
+        expiryDate: cert.expiryDate,
+        documentUrl: cert.documentUrl,
+      }));
+      
+      const payload: any = {
         ...data.personal,
         ...data.farm,
-        districtId: data.location.districtId,
         communityId: data.location.communityId,
         location: data.location,
-        crops: data.crops,
-        certifications: data.certifications,
-        // Flatten crops for PUT schema
-        ...(initialData ? {
-          primaryCrop: data.crops.primaryCrop,
-          secondaryCrops: data.crops.secondaryCrops,
-        } : {})
+        certifications: sanitizedCertifications,
       };
 
+      // Always include crops fields
+      payload.primaryCrop = data.crops.primaryCrop;
+      payload.secondaryCrops = data.crops.secondaryCrops;
+
+      console.log("Submitting payload:", JSON.stringify(payload, null, 2));
       const response = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -412,17 +300,16 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
       if (!response.ok) {
         const body = await response.json().catch(() => null);
+        console.error("API Error Response:", body);
         throw new Error(body?.message ?? "Failed to save farmer record.");
       }
 
       await response.json();
-      
-      // Clear draft after successful submission
-      clearDraft();
 
       toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
       onSuccess();
     } catch (error: any) {
+      console.error("Submission Error:", error);
       toast.error(error.message ?? "Error submitting form. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -684,10 +571,11 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
         {/* Form Content Area */}
         <Card className="flex-1 border-none shadow-none md:shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] bg-white overflow-hidden rounded-none md:rounded-[2.5rem] h-full">
           <CardContent className="p-0 h-full flex flex-col">
-            <form onSubmit={handleSubmit(onSubmit, (errors) => {
-              console.log("Validation Errors:", errors);
-              toast.error("Please check the form for errors before completing.");
-            })} className="h-full flex flex-col justify-between">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const data = getValues();
+              onSubmit(data as FarmerOnboardingData);
+            }} className="h-full flex flex-col justify-between">
               <div className="flex-1 overflow-y-auto p-5 md:py-6 md:px-8 min-h-0">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -1057,16 +945,6 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
                               <SelectItem value="Family">Family Land</SelectItem>
                             </SelectContent>
                           </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="plots">Number of Plots</Label>
-                          <Input 
-                            id="plots" 
-                            type="number" 
-                            {...register("farm.numberOfPlots")}
-                            className="rounded-xl border-slate-300"
-                          />
                         </div>
 
                         <div className="space-y-2">
@@ -1489,53 +1367,15 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
             {/* Footer Navigation */}
             <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-4 w-full sm:w-auto order-2 sm:order-1">
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  onClick={prevStep}
-                  disabled={currentStep === 0 || isSubmitting}
-                  className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider", currentStep === 0 && "opacity-0")}
-                >
-                  <ChevronLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
-                
-                {/* Save Status */}
-                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                      <span>Saving...</span>
-                    </>
-                  ) : lastSavedAt ? (
-                    <>
-                      <CheckCircle2 className="w-3 h-3 text-green-600" />
-                      <span>Saved {(() => {
-                        const diff = Date.now() - lastSavedAt;
-                        if (diff < 60000) return "just now";
-                        const mins = Math.floor(diff / 60000);
-                        return `${mins} min${mins > 1 ? 's' : ''} ago`;
-                      })()}</span>
-                    </>
-                  ) : null}
-                  
-                  {/* Discard Draft Button */}
-                  {lastSavedAt && !isSubmitting && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        clearDraft();
-                        toast.success("Draft discarded");
-                      }}
-                      className="h-8 rounded-lg text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 font-bold"
-                    >
-                      Discard
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                onClick={prevStep}
+                disabled={currentStep === 0 || isSubmitting}
+                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider w-full sm:w-auto order-2 sm:order-1", currentStep === 0 && "opacity-0")}
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" /> Back
+              </Button>
  
               {currentStep === steps.length - 1 ? (
                 <Button 

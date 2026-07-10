@@ -11,18 +11,16 @@ const certificationSchema = z.object({
   name: z.string().trim().min(1).max(200),
   issuingBody: z.string().trim().max(200).optional().or(z.literal("")),
   expiryDate: z.string().optional(),
-  documentUrl: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal(""))
-    .refine((value) => (!value ? true : isAllowedDocumentReference(value)), "Document must be PDF/JPG/PNG (URL, local upload path, or data: URI)"),
-});
+  documentUrl: z.union([z.string().trim(), z.null(), z.literal("")]).optional().refine((value) => {
+    if (!value || value === null) return true;
+    return isAllowedDocumentReference(value);
+  }, "Document must be PDF/JPG/PNG (URL, local upload path, or data: URI)"),
+}).passthrough();
 
 const updateSchema = z.object({
   externalRef: z.string().trim().max(120).optional().or(z.literal("")),
-  fullName: z.string().trim().min(2).max(150),
-  email: z.string().email().optional().or(z.literal("")),
+  fullName: z.string().trim().min(1).max(150).optional(),
+  email: z.union([z.string().email(), z.literal("")]).optional().or(z.literal("")),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   gender: z.string().trim().max(40).optional().or(z.literal("")),
   cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
@@ -36,16 +34,16 @@ const updateSchema = z.object({
     .refine((value) => (!value ? true : isAllowedImageReference(value)), "Ghana Card photo must be JPG/PNG (URL, local upload path, or data: URI)"),
   bio: z.string().trim().max(1000).optional().or(z.literal("")),
   communityId: z.string().cuid().optional(),
-  farmName: z.string().trim().min(2).max(150),
+  farmName: z.string().trim().min(1).max(150).optional(),
   farmType: z.string().trim().max(120).optional().or(z.literal("")),
   primaryCrop: z.string().trim().max(120).optional().or(z.literal("")),
   secondaryCrops: z.array(z.string().trim().min(1)).optional(),
-  farmSize: z.coerce.number().positive().optional(),
+  farmSize: z.coerce.number().min(0).optional(),
   farmSizeUnit: z.enum(["acres", "hectares"]).optional().or(z.literal("")),
   ownershipType: z.string().trim().max(120).optional().or(z.literal("")),
   irrigationType: z.string().trim().max(120).optional().or(z.literal("")),
   numberOfPlots: z.coerce.number().int().nonnegative().optional(),
-  totalAreaHectare: z.coerce.number().positive().optional(),
+  totalAreaHectare: z.coerce.number().min(0).optional(),
   farmSitePhotoUrl: z
     .string()
     .trim()
@@ -187,8 +185,11 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PUT(request: Request, context: RouteContext) {
+  console.log("=== Farmer UPDATE API called ===");
+  
   const auth = await requireApiRole(["admin", "agronomist"]);
   if (!auth.ok) {
+    console.log("Auth failed:", auth);
     return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
@@ -196,9 +197,16 @@ export async function PUT(request: Request, context: RouteContext) {
   const organizationId = requireOrgScope(actor);
 
   const { farmerId } = await context.params;
-  const payload = await request.json().catch(() => null);
+  const payload = await request.json().catch((e) => {
+    console.error("Failed to parse request body:", e);
+    return null;
+  });
+  
+  console.log("Raw request payload:", payload);
+  
   const parsed = updateSchema.safeParse(payload);
   if (!parsed.success) {
+    console.log("Schema validation failed:", parsed.error.flatten());
     return NextResponse.json(
       { message: "Invalid farmer update payload.", errors: parsed.error.flatten() },
       { status: 400 },
@@ -206,6 +214,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const data = parsed.data;
+  console.log("Parsed data (to save):", data);
 
   const whereClause: any = { id: farmerId, organizationId };
   if (actor.roles.includes("agronomist") && !actor.roles.includes("admin")) {
@@ -263,23 +272,27 @@ export async function PUT(request: Request, context: RouteContext) {
     const totalAreaHectare =
       data.totalAreaHectare !== undefined ? data.totalAreaHectare : toHectares(data.farmSize, data.farmSizeUnit);
 
-    const farmerUpdate = await tx.farmer.updateMany({
-      where: { id: farmerId, organizationId },
-      data: {
-        externalRef: data.externalRef || null,
-        fullName: data.fullName,
-        email: data.email?.trim().toLowerCase() || null,
-        phone: data.phone || null,
-        gender: data.gender || null,
-        cooperativeName: data.cooperativeName || null,
-        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
-        ghanaCardNumber: data.ghanaCardNumber || null,
-        bio: data.bio || null,
-        communityId: data.communityId || undefined,
-        ...(data.primaryCrop !== undefined ? { primaryCrop: data.primaryCrop || null } : {}),
-        ...(data.secondaryCrops !== undefined ? { secondaryCrops: data.secondaryCrops } : {}),
-      },
-    });
+    // Build farmer data object only with provided values
+      const farmerData: any = {};
+      if (data.externalRef !== undefined) farmerData.externalRef = data.externalRef || null;
+      if (data.fullName !== undefined) farmerData.fullName = data.fullName;
+      if (data.email !== undefined) farmerData.email = data.email?.trim().toLowerCase() || null;
+      if (data.phone !== undefined) farmerData.phone = data.phone || null;
+      if (data.gender !== undefined) farmerData.gender = data.gender || null;
+      if (data.cooperativeName !== undefined) farmerData.cooperativeName = data.cooperativeName || null;
+      if (data.dateOfBirth !== undefined) farmerData.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+      if (data.ghanaCardNumber !== undefined) farmerData.ghanaCardNumber = data.ghanaCardNumber || null;
+      if (data.bio !== undefined) farmerData.bio = data.bio || null;
+      if (data.communityId !== undefined) farmerData.communityId = data.communityId;
+      if (data.primaryCrop !== undefined) farmerData.primaryCrop = data.primaryCrop || null;
+      if (data.secondaryCrops !== undefined) farmerData.secondaryCrops = data.secondaryCrops;
+
+      console.log("Updating farmer with data:", farmerData);
+      
+      const farmerUpdate = await tx.farmer.updateMany({
+        where: { id: farmerId, organizationId },
+        data: farmerData,
+      });
 
     if (farmerUpdate.count !== 1) {
       throw new Error("Farmer not found or unauthorized.");
@@ -293,36 +306,35 @@ export async function PUT(request: Request, context: RouteContext) {
       throw new Error("Farmer not found or unauthorized.");
     }
 
+    // Build farm profile data object only with provided values
+    const farmProfileData: any = {};
+    if (data.farmName !== undefined) farmProfileData.farmName = data.farmName;
+    if (data.farmType !== undefined) farmProfileData.farmType = data.farmType || null;
+    if (data.farmSize !== undefined) farmProfileData.farmSize = data.farmSize;
+    if (data.farmSizeUnit !== undefined) farmProfileData.farmSizeUnit = data.farmSizeUnit || null;
+    if (data.ownershipType !== undefined) farmProfileData.ownershipType = data.ownershipType || null;
+    if (data.irrigationType !== undefined) farmProfileData.irrigationType = data.irrigationType || null;
+    if (data.numberOfPlots !== undefined) farmProfileData.numberOfPlots = data.numberOfPlots;
+    if (totalAreaHectare !== undefined) farmProfileData.totalAreaHectare = totalAreaHectare;
+
+    console.log("Updating farm profile with data:", farmProfileData);
+
     const profile =
       primaryProfile == null
         ? await tx.farmProfile.create({
             data: {
               organizationId: farmer.organizationId,
               farmerId,
-              farmName: data.farmName,
-              farmType: data.farmType || null,
-              farmSize: data.farmSize,
-              farmSizeUnit: data.farmSizeUnit || null,
-              ownershipType: data.ownershipType || null,
-              irrigationType: data.irrigationType || null,
-              numberOfPlots: data.numberOfPlots,
-              totalAreaHectare,
+              ...farmProfileData,
             },
           })
         : await (async () => {
-            await tx.farmProfile.updateMany({
-              where: { id: primaryProfile.id, organizationId },
-              data: {
-                farmName: data.farmName,
-                farmType: data.farmType || null,
-                farmSize: data.farmSize,
-                farmSizeUnit: data.farmSizeUnit || null,
-                ownershipType: data.ownershipType || null,
-                irrigationType: data.irrigationType || null,
-                numberOfPlots: data.numberOfPlots,
-                totalAreaHectare,
-              },
-            });
+            if (Object.keys(farmProfileData).length > 0) {
+              await tx.farmProfile.updateMany({
+                where: { id: primaryProfile.id, organizationId },
+                data: farmProfileData,
+              });
+            }
             return tx.farmProfile.findFirst({ where: { id: primaryProfile.id, organizationId } });
           })();
 

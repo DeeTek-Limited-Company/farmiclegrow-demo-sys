@@ -39,7 +39,7 @@ export const personalSchema = z.object({
   email: z.preprocess(
     preprocessOptionalTrimmedString,
     z.union([z.literal(""), z.string().email("Invalid email address")]),
-  ),
+  ).optional(),
   cooperativeName: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   gender: z.string().optional(),
   dateOfBirth: z.string().optional(),
@@ -52,7 +52,8 @@ export const personalSchema = z.object({
   profilePhoto: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   ghanaCardPhotoUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())
-    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)"),
+    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)")
+    .optional(),
 });
 
 // STEP 2: Location Information
@@ -69,14 +70,14 @@ export const locationSchema = z.object({
 // STEP 3: Farm Profile
 export const farmSchema = z.object({
   farmName: z.string().min(1, "Farm name is required"),
-  farmSize: z.coerce.number().positive("Farm size must be positive"),
-  farmSizeUnit: z.enum(["acres", "hectares"]),
-  ownershipType: z.enum(["Owned", "Rented", "Family"]),
-  numberOfPlots: z.preprocess(preprocessEmpty, z.coerce.number().int().nonnegative()).optional(),
-  irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]),
+  farmSize: z.preprocess(preprocessEmpty, z.coerce.number().min(0, "Farm size must be a non-negative number").optional()),
+  farmSizeUnit: z.enum(["acres", "hectares"]).optional(),
+  ownershipType: z.enum(["Owned", "Rented", "Family"]).optional(),
+  irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]).optional(),
   farmSitePhotoUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())
-    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)"),
+    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)")
+    .optional(),
 });
 
 // STEP 4: Crops (LIGHT ONLY)
