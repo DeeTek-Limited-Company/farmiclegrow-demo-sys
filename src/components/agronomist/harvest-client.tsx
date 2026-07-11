@@ -260,6 +260,46 @@ export function HarvestClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_harvest_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => 
+              k !== "supervisorApproved" && k !== "photoUrls" && v !== "" && v !== null && v !== undefined
+            );
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Harvest draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse harvest draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => 
+        k !== "supervisorApproved" && k !== "photoUrls" && v !== "" && v !== null && v !== undefined
+      );
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_harvest_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const uploadHarvestPhotos = async (files: File[]) => {
     if (!files.length) return;
     setUploadingPhotos(true);
@@ -394,6 +434,9 @@ export function HarvestClient({
       if (!res.ok) throw new Error(data?.message || "Failed to save harvest record.");
 
       toast.success(edit ? "Harvest updated" : "Harvest recorded");
+      if (!edit) {
+        localStorage.removeItem("farmicle_harvest_draft");
+      }
       close();
       router.refresh();
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -64,6 +64,7 @@ type FormState = {
   farmerId: string;
   plotName: string;
   plotSizeHectare: string;
+  plotSizeUnit: "hectares" | "acres";
   soilType: string;
   irrigationSource: string;
   previousCrop: string;
@@ -98,6 +99,7 @@ export function FarmPlotsClient({
     farmerId: "",
     plotName: "",
     plotSizeHectare: "",
+    plotSizeUnit: "hectares",
     soilType: "",
     irrigationSource: "",
     previousCrop: "",
@@ -134,6 +136,7 @@ export function FarmPlotsClient({
       farmerId: "",
       plotName: "",
       plotSizeHectare: "",
+      plotSizeUnit: "hectares",
       soilType: "",
       irrigationSource: "",
       previousCrop: "",
@@ -146,6 +149,42 @@ export function FarmPlotsClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_plot_registration_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => k !== "landDocumentAvailable" && k !== "plotSizeUnit" && v !== "" && v !== null && v !== undefined);
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Plot registration draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse plot registration draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => k !== "landDocumentAvailable" && k !== "plotSizeUnit" && v !== "" && v !== null && v !== undefined);
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_plot_registration_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const openCreate = () => {
     resetForm();
     setOpen(true);
@@ -157,6 +196,7 @@ export function FarmPlotsClient({
       farmerId: p.farmerId,
       plotName: p.plotName || "",
       plotSizeHectare: p.plotSizeHectare !== null && p.plotSizeHectare !== undefined ? String(p.plotSizeHectare) : "",
+      plotSizeUnit: "hectares",
       soilType: p.soilType || "",
       irrigationSource: p.irrigationSource || "",
       previousCrop: p.previousCrop || "",
@@ -182,10 +222,15 @@ export function FarmPlotsClient({
 
     setSaving(true);
     try {
+      let sizeVal = form.plotSizeHectare ? Number(form.plotSizeHectare) : null;
+      if (sizeVal !== null && !isNaN(sizeVal) && form.plotSizeUnit === "acres") {
+        sizeVal = sizeVal * 0.404686;
+      }
+
       const payload: any = {
         farmerId: form.farmerId,
         plotName: form.plotName.trim() || null,
-        plotSizeHectare: form.plotSizeHectare ? Number(form.plotSizeHectare) : null,
+        plotSizeHectare: sizeVal,
         soilType: form.soilType.trim() || null,
         irrigationSource: form.irrigationSource.trim() || null,
         previousCrop: form.previousCrop.trim() || null,
@@ -212,6 +257,9 @@ export function FarmPlotsClient({
       }
 
       toast.success(edit ? "Plot updated" : "Plot created");
+      if (!edit) {
+        localStorage.removeItem("farmicle_plot_registration_draft");
+      }
       close();
       router.refresh();
 
@@ -411,16 +459,30 @@ export function FarmPlotsClient({
 
                 <div className="space-y-2">
                   <Label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
-                    Plot size (hectares)
+                    Plot size
                   </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.plotSizeHectare}
-                    onChange={(e) => setForm((prev) => ({ ...prev, plotSizeHectare: e.target.value }))}
-                    placeholder="0.00"
-                    className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.plotSizeHectare}
+                      onChange={(e) => setForm((prev) => ({ ...prev, plotSizeHectare: e.target.value }))}
+                      placeholder="0.00"
+                      className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold flex-1"
+                    />
+                    <Select
+                      value={form.plotSizeUnit}
+                      onValueChange={(v: "hectares" | "acres") => setForm((prev) => ({ ...prev, plotSizeUnit: v as any }))}
+                    >
+                      <SelectTrigger className="h-12 w-[130px] rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                        <SelectItem value="hectares" className="rounded-xl font-medium">Hectares (ha)</SelectItem>
+                        <SelectItem value="acres" className="rounded-xl font-medium">Acres (ac)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

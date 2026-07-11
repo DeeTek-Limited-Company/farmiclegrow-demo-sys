@@ -20,7 +20,7 @@ const updateSchema = z.object({
   farmProfileId: z.string().cuid().optional().nullable(),
   season: z.string().min(1).optional(),
   cropType: z.string().min(1).optional(),
-  cropVariety: z.string().optional().nullable(),
+  cropVariety: z.string().min(1, "Crop variety is required").optional(),
   status: z.enum(["PLANNED", "ACTIVE", "HARVESTED", "COMPLETED"]).optional(),
   plantingDate: z.string().datetime().optional().nullable(),
   expectedHarvestDate: z.string().datetime().optional().nullable(),

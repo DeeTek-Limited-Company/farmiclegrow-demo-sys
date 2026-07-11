@@ -57,6 +57,10 @@ export function ProductionRecordForm({
   const [farmersLoading, setFarmersLoading] = useState(false);
   const [farmers, setFarmers] = useState<any[]>(() => initialFarmers ?? []);
   const [plots, setPlots] = useState<any[]>([]);
+  const [expectedYieldUnit, setExpectedYieldUnit] = useState<"ton" | "kg">("ton");
+  const [quantityUnit, setQuantityUnit] = useState<"ton" | "kg">("ton");
+  const [actualYieldUnit, setActualYieldUnit] = useState<"ton" | "kg">("ton");
+  const [farmSizeUnit, setFarmSizeUnit] = useState<"hectares" | "acres">("hectares");
   const [formData, setFormData] = useState({
     farmerId: "",
     plotId: "",
@@ -83,6 +87,10 @@ export function ProductionRecordForm({
       } else {
         setFarmers(initialFarmers);
       }
+      setExpectedYieldUnit("ton");
+      setQuantityUnit("ton");
+      setActualYieldUnit("ton");
+      setFarmSizeUnit("hectares");
       if (editRecord) {
         setFormData({
           farmerId: editRecord.farmerId || "",
@@ -107,6 +115,62 @@ export function ProductionRecordForm({
       }
     }
   }, [open, editRecord, initialFarmers]);
+
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !editRecord) {
+      const saved = localStorage.getItem("farmicle_production_cycle_draft");
+      if (saved) {
+        try {
+          const { formData: savedForm, expectedYieldUnit: savedExpUnit, quantityUnit: savedQtyUnit, actualYieldUnit: savedActUnit, farmSizeUnit: savedSizeUnit, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => k !== "status" && v !== "" && v !== null && v !== undefined);
+            if (hasData) {
+              setFormData(savedForm);
+              if (savedExpUnit) setExpectedYieldUnit(savedExpUnit);
+              if (savedQtyUnit) setQuantityUnit(savedQtyUnit);
+              if (savedActUnit) setActualYieldUnit(savedActUnit);
+              if (savedSizeUnit) setFarmSizeUnit(savedSizeUnit);
+              if (savedForm.farmerId) {
+                void fetchPlots(savedForm.farmerId);
+              }
+              toast.success("Production cycle draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse production cycle draft", e);
+        }
+      }
+    }
+  }, [open, editRecord]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !editRecord && !isLoading) {
+      const hasData = Object.entries(formData).some(([k, v]) => k !== "status" && v !== "" && v !== null && v !== undefined);
+      if (hasData) {
+        const draft = {
+          formData,
+          expectedYieldUnit,
+          quantityUnit,
+          actualYieldUnit,
+          farmSizeUnit,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_production_cycle_draft", JSON.stringify(draft));
+      }
+    }
+  }, [
+    open,
+    editRecord,
+    isLoading,
+    formData,
+    expectedYieldUnit,
+    quantityUnit,
+    actualYieldUnit,
+    farmSizeUnit,
+  ]);
 
   const fetchPlots = async (farmerId: string) => {
     try {
@@ -184,15 +248,41 @@ export function ProductionRecordForm({
     e.preventDefault();
     setIsLoading(true);
 
+    if (!formData.cropVariety.trim()) {
+      toast.error("Crop variety is required.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      let expYield = formData.expectedYieldTon ? parseFloat(formData.expectedYieldTon) : null;
+      if (expYield !== null && !isNaN(expYield) && expectedYieldUnit === "kg") {
+        expYield = expYield / 1000;
+      }
+
+      let qty = formData.quantityTon ? parseFloat(formData.quantityTon) : null;
+      if (qty !== null && !isNaN(qty) && quantityUnit === "kg") {
+        qty = qty / 1000;
+      }
+
+      let actYield = formData.actualYieldTon ? parseFloat(formData.actualYieldTon) : null;
+      if (actYield !== null && !isNaN(actYield) && actualYieldUnit === "kg") {
+        actYield = actYield / 1000;
+      }
+
+      let farmSize = formData.farmSizeHectares ? parseFloat(formData.farmSizeHectares) : null;
+      if (farmSize !== null && !isNaN(farmSize) && farmSizeUnit === "acres") {
+        farmSize = farmSize * 0.404686;
+      }
+
       const payload = {
         ...formData,
         plotId: formData.plotId ? formData.plotId : null,
-        cropVariety: formData.cropVariety.trim() || null,
-        expectedYieldTon: formData.expectedYieldTon ? parseFloat(formData.expectedYieldTon) : null,
-        quantityTon: formData.quantityTon ? parseFloat(formData.quantityTon) : null,
-        actualYieldTon: formData.actualYieldTon ? parseFloat(formData.actualYieldTon) : null,
-        farmSizeHectares: formData.farmSizeHectares ? parseFloat(formData.farmSizeHectares) : null,
+        cropVariety: formData.cropVariety.trim(),
+        expectedYieldTon: expYield,
+        quantityTon: qty,
+        actualYieldTon: actYield,
+        farmSizeHectares: farmSize,
         plantingDate: formData.plantingDate ? new Date(formData.plantingDate).toISOString() : null,
         expectedHarvestDate: formData.expectedHarvestDate ? new Date(formData.expectedHarvestDate).toISOString() : null,
         actualHarvestDate: formData.actualHarvestDate ? new Date(formData.actualHarvestDate).toISOString() : null,
@@ -220,6 +310,9 @@ export function ProductionRecordForm({
           ? "Production record updated successfully!"
           : "Production record created successfully!"
       );
+      if (!editRecord) {
+        localStorage.removeItem("farmicle_production_cycle_draft");
+      }
       onOpenChange(false);
       onSuccess();
       resetForm();
@@ -395,13 +488,13 @@ export function ProductionRecordForm({
 
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase tracking-widest text-slate-500 ml-1">
-                  Variety{" "}
-                  <span className="text-slate-400 font-semibold normal-case tracking-normal">(optional)</span>
+                  Variety *
                 </Label>
                 <Input
                   name="cropVariety"
                   value={formData.cropVariety}
                   onChange={handleChange}
+                  required
                   placeholder="e.g., Local yellow, hybrids…"
                   className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-bold"
                 />
@@ -449,17 +542,31 @@ export function ProductionRecordForm({
 
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase tracking-widest text-slate-500 ml-1 text-blue-600">
-                  Expected Yield (T)
+                  Expected Yield
                 </Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  name="expectedYieldTon"
-                  value={formData.expectedYieldTon}
-                  onChange={handleChange}
-                  placeholder="0.00"
-                  className="h-14 rounded-2xl bg-blue-50/30 border-blue-100 font-bold text-blue-700"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    name="expectedYieldTon"
+                    value={formData.expectedYieldTon}
+                    onChange={handleChange}
+                    placeholder="0.00"
+                    className="h-14 rounded-2xl bg-blue-50/30 border-blue-100 font-bold text-blue-700 flex-1"
+                  />
+                  <Select
+                    value={expectedYieldUnit}
+                    onValueChange={(v: "ton" | "kg") => setExpectedYieldUnit(v)}
+                  >
+                    <SelectTrigger className="h-14 w-[110px] rounded-2xl bg-blue-50/30 border-blue-100 font-bold text-blue-700">
+                      <SelectValue placeholder="Unit" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-100">
+                      <SelectItem value="ton" className="rounded-xl font-medium">Tons (T)</SelectItem>
+                      <SelectItem value="kg" className="rounded-xl font-medium">Kilograms (kg)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>
@@ -488,32 +595,60 @@ export function ProductionRecordForm({
 
                 <div className="space-y-2">
                   <Label className="text-xs font-black uppercase tracking-widest text-slate-500 ml-1 text-amber-600">
-                    Harvested qty (total collected, T)
+                    Harvested qty
                   </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    name="quantityTon"
-                    value={formData.quantityTon}
-                    onChange={handleChange}
-                    placeholder="0.00"
-                    className="h-14 rounded-2xl bg-white border-amber-100 font-bold text-amber-700 shadow-sm shadow-amber-200/20"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      name="quantityTon"
+                      value={formData.quantityTon}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      className="h-14 rounded-2xl bg-white border-amber-100 font-bold text-amber-700 shadow-sm shadow-amber-200/20 flex-1"
+                    />
+                    <Select
+                      value={quantityUnit}
+                      onValueChange={(v: "ton" | "kg") => setQuantityUnit(v)}
+                    >
+                      <SelectTrigger className="h-14 w-[100px] rounded-2xl bg-white border-amber-100 font-bold text-amber-700 shadow-sm shadow-amber-200/20">
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-slate-100">
+                        <SelectItem value="ton" className="rounded-xl font-medium">Tons (T)</SelectItem>
+                        <SelectItem value="kg" className="rounded-xl font-medium">Kilograms (kg)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-xs font-black uppercase tracking-widest text-slate-500 ml-1 text-emerald-600">
-                    Usable yield (clean / marketable, T)
+                    Usable yield
                   </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    name="actualYieldTon"
-                    value={formData.actualYieldTon}
-                    onChange={handleChange}
-                    placeholder="0.00"
-                    className="h-14 rounded-2xl bg-white border-emerald-100 font-bold text-emerald-700 shadow-sm shadow-emerald-200/20"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      name="actualYieldTon"
+                      value={formData.actualYieldTon}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      className="h-14 rounded-2xl bg-white border-emerald-100 font-bold text-emerald-700 shadow-sm shadow-emerald-200/20 flex-1"
+                    />
+                    <Select
+                      value={actualYieldUnit}
+                      onValueChange={(v: "ton" | "kg") => setActualYieldUnit(v)}
+                    >
+                      <SelectTrigger className="h-14 w-[100px] rounded-2xl bg-white border-emerald-100 font-bold text-emerald-700 shadow-sm shadow-emerald-200/20">
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-slate-100">
+                        <SelectItem value="ton" className="rounded-xl font-medium">Tons (T)</SelectItem>
+                        <SelectItem value="kg" className="rounded-xl font-medium">Kilograms (kg)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -567,17 +702,31 @@ export function ProductionRecordForm({
 
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase tracking-widest text-slate-500 ml-1">
-                  Farm area used (ha)
+                  Farm area used
                 </Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  name="farmSizeHectares"
-                  value={formData.farmSizeHectares}
-                  onChange={handleChange}
-                  placeholder="0.00"
-                  className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-bold"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    name="farmSizeHectares"
+                    value={formData.farmSizeHectares}
+                    onChange={handleChange}
+                    placeholder="0.00"
+                    className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-bold flex-1"
+                  />
+                  <Select
+                    value={farmSizeUnit}
+                    onValueChange={(v: "hectares" | "acres") => setFarmSizeUnit(v)}
+                  >
+                    <SelectTrigger className="h-14 w-[130px] rounded-2xl bg-slate-50 border-slate-200 font-bold">
+                      <SelectValue placeholder="Unit" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-100">
+                      <SelectItem value="hectares" className="rounded-xl font-medium">Hectares (ha)</SelectItem>
+                      <SelectItem value="acres" className="rounded-xl font-medium">Acres (ac)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 

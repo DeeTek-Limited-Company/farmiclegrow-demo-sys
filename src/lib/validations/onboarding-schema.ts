@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAllowedDocumentReference, isAllowedImageReference } from "@/lib/uploads";
 
 function preprocessEmpty(v: unknown) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -22,49 +23,6 @@ function preprocessOptionalTrimmedString(v: unknown) {
   return String(v).trim();
 }
 
-function hasAllowedDocumentType(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-
-  if (trimmed.startsWith("data:")) {
-    const prefix = trimmed.slice(0, 80).toLowerCase();
-    return (
-      prefix.startsWith("data:application/pdf") ||
-      prefix.startsWith("data:image/jpeg") ||
-      prefix.startsWith("data:image/jpg") ||
-      prefix.startsWith("data:image/png")
-    );
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const pathname = url.pathname.toLowerCase();
-    const ext = pathname.split(".").pop() || "";
-    return ["pdf", "jpg", "jpeg", "png"].includes(ext);
-  } catch {
-    return false;
-  }
-}
-
-function hasAllowedImageType(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-
-  if (trimmed.startsWith("data:")) {
-    const prefix = trimmed.slice(0, 80).toLowerCase();
-    return prefix.startsWith("data:image/jpeg") || prefix.startsWith("data:image/jpg") || prefix.startsWith("data:image/png");
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const pathname = url.pathname.toLowerCase();
-    const ext = pathname.split(".").pop() || "";
-    return ["jpg", "jpeg", "png"].includes(ext);
-  } catch {
-    return false;
-  }
-}
-
 // STEP 1: Personal Information
 export const personalSchema = z.object({
   fullName: z.preprocess(preprocessRequiredTrimmedString, z.string().min(2, "Full name is required")),
@@ -81,7 +39,7 @@ export const personalSchema = z.object({
   email: z.preprocess(
     preprocessOptionalTrimmedString,
     z.union([z.literal(""), z.string().email("Invalid email address")]),
-  ),
+  ).optional(),
   cooperativeName: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   gender: z.string().optional(),
   dateOfBirth: z.string().optional(),
@@ -94,7 +52,8 @@ export const personalSchema = z.object({
   profilePhoto: z.preprocess(preprocessOptionalTrimmedString, z.string()).optional(),
   ghanaCardPhotoUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())
-    .refine((v) => (v ? hasAllowedImageType(v) : true), "Image must be JPG/PNG (URL or data: URI)"),
+    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)")
+    .optional(),
 });
 
 // STEP 2: Location Information
@@ -111,14 +70,14 @@ export const locationSchema = z.object({
 // STEP 3: Farm Profile
 export const farmSchema = z.object({
   farmName: z.string().min(1, "Farm name is required"),
-  farmSize: z.coerce.number().positive("Farm size must be positive"),
-  farmSizeUnit: z.enum(["acres", "hectares"]),
-  ownershipType: z.enum(["Owned", "Rented", "Family"]),
-  numberOfPlots: z.preprocess(preprocessEmpty, z.coerce.number().int().nonnegative()).optional(),
-  irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]),
+  farmSize: z.preprocess(preprocessEmpty, z.coerce.number().min(0, "Farm size must be a non-negative number").optional()),
+  farmSizeUnit: z.enum(["acres", "hectares"]).optional(),
+  ownershipType: z.enum(["Owned", "Rented", "Family"]).optional(),
+  irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]).optional(),
   farmSitePhotoUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())
-    .refine((v) => (v ? hasAllowedImageType(v) : true), "Image must be JPG/PNG (URL or data: URI)"),
+    .refine((v) => (v ? isAllowedImageReference(v) : true), "Image must be JPG/PNG (URL, local upload path, or data: URI)")
+    .optional(),
 });
 
 // STEP 4: Crops (LIGHT ONLY)
@@ -134,7 +93,7 @@ export const certificationSchema = z.object({
   expiryDate: z.string().optional(),
   documentUrl: z
     .preprocess(preprocessOptionalTrimmedString, z.string())
-    .refine((v) => (v ? hasAllowedDocumentType(v) : true), "Document must be PDF/JPG/PNG (URL or data: URI)"),
+    .refine((v) => (v ? isAllowedDocumentReference(v) : true), "Document must be PDF/JPG/PNG (URL, local upload path, or data: URI)"),
 });
 
 export const farmerOnboardingSchema = z.object({

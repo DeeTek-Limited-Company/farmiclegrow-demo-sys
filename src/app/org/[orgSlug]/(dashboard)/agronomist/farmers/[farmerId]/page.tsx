@@ -31,7 +31,6 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 import { FarmerLiveActivity } from "@/components/shared/farmer-live-activity";
-import { EditFarmerButton } from "@/components/agronomist/edit-farmer-button";
 
 interface PageProps {
   params: Promise<{ farmerId: string }>;
@@ -166,7 +165,6 @@ export default async function FarmerProfilePage({ params }: PageProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <EditFarmerButton farmer={JSON.parse(JSON.stringify(farmer))} />
           <Button className="rounded-2xl font-bold h-12 px-6 shadow-xl shadow-primary/20">
             <TrendingUp className="w-4 h-4 mr-2" />
             Add Record
@@ -181,6 +179,33 @@ export default async function FarmerProfilePage({ params }: PageProps) {
         
         {/* Left Column: Core Data */}
         <div className="lg:col-span-2 space-y-8">
+          {/* Personal Details Card */}
+          <Card className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                <User className="w-5 h-5 text-primary" />
+                Farmer Personal Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <DataField label="Full Name" value={farmer.fullName} />
+                <DataField label="Phone Number" value={farmer.phone} />
+                <DataField label="Email" value={farmer.email} />
+                <DataField label="Cooperative Name" value={farmer.cooperativeName} />
+                <DataField label="Gender" value={farmer.gender} />
+                <DataField 
+                  label="Date of Birth" 
+                  value={farmer.dateOfBirth ? format(new Date(farmer.dateOfBirth), "MMM d, yyyy") : null} 
+                />
+                <DataField label="Ghana Card Number" value={farmer.ghanaCardNumber} />
+                <div className="md:col-span-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Bio / Notes</p>
+                  <p className="text-base font-bold text-slate-800 whitespace-pre-wrap">{farmer.bio || "Not provided"}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           
           {/* Farm Details Card */}
           <Card className="border-0 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden">
@@ -195,7 +220,11 @@ export default async function FarmerProfilePage({ params }: PageProps) {
                 <DataField label="Farm Name" value={primaryProfile?.farmName} />
                 <DataField label="Farm Type" value={primaryProfile?.farmType || "N/A"} />
                 <DataField label="Primary Crop" value={farmer.primaryCrop ?? "N/A"} />
-                <DataField label="Land Size" value={primaryProfile?.totalAreaHectare != null ? `${primaryProfile.totalAreaHectare.toString()} ha` : "N/A"} />
+                <DataField label="Secondary Crops" value={Array.isArray(farmer.secondaryCrops) && farmer.secondaryCrops.length > 0 ? (farmer.secondaryCrops as string[]).join(", ") : "None"} />
+                <DataField label="Land Size (Hectares)" value={primaryProfile?.totalAreaHectare != null ? `${primaryProfile.totalAreaHectare.toString()} ha` : "N/A"} />
+                <DataField label="Land Size (Original)" value={primaryProfile?.farmSize != null && primaryProfile?.farmSizeUnit ? `${primaryProfile.farmSize} ${primaryProfile.farmSizeUnit}` : "N/A"} />
+                <DataField label="Land Ownership" value={primaryProfile?.ownershipType || "N/A"} />
+                <DataField label="Irrigation Type" value={primaryProfile?.irrigationType || "N/A"} />
                 <div className="md:col-span-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 block">Location & GPS</Label>
                   <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
@@ -206,6 +235,7 @@ export default async function FarmerProfilePage({ params }: PageProps) {
                       <div>
                         <p className="text-sm font-bold text-slate-700">{primaryLocation?.community || "Village unknown"}</p>
                         <p className="text-xs text-slate-500 font-medium">{primaryLocation?.district}, {primaryLocation?.region}</p>
+                        {primaryLocation?.address ? <p className="text-xs text-slate-400 mt-1">{primaryLocation.address}</p> : null}
                       </div>
                     </div>
                     <div className="text-right">
@@ -623,20 +653,80 @@ export default async function FarmerProfilePage({ params }: PageProps) {
 
         {/* Right Column: Status, Docs & Audit */}
         <div className="space-y-8">
+          {/* Certifications Card */}
+          {farmer.certifications.length > 0 && (
+            <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+              <CardHeader className="bg-slate-50/30 border-b border-slate-100 p-6">
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-primary" />
+                  Certifications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-3">
+                {farmer.certifications.map((cert) => (
+                  <div key={cert.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                    <div className="font-black text-slate-800">{cert.name}</div>
+                    {cert.issuer && <div className="text-xs text-slate-500 font-medium mt-1">Issuer: {cert.issuer}</div>}
+                    {cert.validTo && (
+                      <div className="text-xs text-slate-500 font-medium mt-1">
+                        Valid until: {format(new Date(cert.validTo), "MMM d, yyyy")}
+                      </div>
+                    )}
+                    {cert.documentUrl && (
+                      <div className="mt-2">
+                        <a 
+                          href={cert.documentUrl.startsWith("http") ? cert.documentUrl : `/${cert.documentUrl.replace(/^\//, "")}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-xs font-bold text-primary hover:text-primary/80"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          View Document
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Document Vault Card */}
           <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
             <CardHeader className="bg-slate-50/30 border-b border-slate-100 p-6">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" />
-                Document Vault
+                Uploaded Documents
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="space-y-4">
-                <DocItem label="Ghana Card" status={farmer.ghanaCardNumber ? "UPLOADED" : "MISSING"} />
-                <DocItem label="Land Title / Lease" status="MISSING" />
-                <DocItem label="Agric Certification" status="MISSING" />
-              </div>
+              {farmer.documents.length > 0 ? (
+                <div className="space-y-3">
+                  {farmer.documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-700 truncate">{doc.name}</p>
+                        <p className="text-xs text-slate-500 font-medium mt-1">
+                          {doc.type.replace("_", " ")} · {format(new Date(doc.createdAt), "MMM d, yyyy")}
+                        </p>
+                      </div>
+                      <a 
+                        href={doc.url.startsWith("http") ? doc.url : `/${doc.url.replace(/^\//, "")}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-500 font-bold text-center py-4">
+                  No documents uploaded yet.
+                </div>
+              )}
             </CardContent>
           </Card>
 

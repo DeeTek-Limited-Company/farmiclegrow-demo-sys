@@ -222,13 +222,17 @@ export function OnboardingManager({
               Register New Farmer
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-5xl p-0 border-none bg-transparent shadow-none top-20 translate-y-0 max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <DialogContent showCloseButton={false} className="w-full max-w-none md:max-w-5xl h-dvh md:h-auto md:max-h-[90vh] top-0 md:top-20 left-0 md:left-[50%] translate-x-0 md:translate-x-[-50%] translate-y-0 p-0 border-none bg-transparent shadow-none overflow-y-auto md:overflow-hidden custom-scrollbar">
             <div className="sr-only">
               <DialogTitle>{editingFarmer ? "Edit Farmer Profile" : "Farmer Onboarding Wizard"}</DialogTitle>
               <DialogDescription>{editingFarmer ? "Update the farmer's information." : "Complete the 6 steps to register a new farmer."}</DialogDescription>
             </div>
             <FarmerOnboardingWizard 
               initialData={editingFarmer}
+              onClose={() => {
+                setIsWizardOpen(false);
+                setEditingFarmer(null);
+              }}
               onSuccess={() => {
                 setIsWizardOpen(false);
                 setEditingFarmer(null);

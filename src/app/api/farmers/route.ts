@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/security/audit";
 import { requireOrgScope } from "@/lib/tenant/scope";
 import { cursorFindManyArgs, parseCursorPageParams, toCursorPage } from "@/lib/pagination/cursor";
 import { checkPlanLimit } from "@/lib/billing/limits";
+import { isAllowedDocumentReference, isAllowedImageReference } from "@/lib/uploads";
 
 const locationSchema = z.object({
   region: z.string().optional(),
@@ -22,61 +23,14 @@ const cropsSchema = z.object({
   secondaryCrops: z.array(z.string().trim().min(1)).optional(),
 });
 
-function hasAllowedDocumentType(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-
-  if (trimmed.startsWith("data:")) {
-    const prefix = trimmed.slice(0, 80).toLowerCase();
-    return (
-      prefix.startsWith("data:application/pdf") ||
-      prefix.startsWith("data:image/jpeg") ||
-      prefix.startsWith("data:image/jpg") ||
-      prefix.startsWith("data:image/png")
-    );
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const pathname = url.pathname.toLowerCase();
-    const ext = pathname.split(".").pop() || "";
-    return ["pdf", "jpg", "jpeg", "png"].includes(ext);
-  } catch {
-    return false;
-  }
-}
-
-function hasAllowedImageType(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-
-  if (trimmed.startsWith("data:")) {
-    const prefix = trimmed.slice(0, 80).toLowerCase();
-    return (
-      prefix.startsWith("data:image/jpeg") ||
-      prefix.startsWith("data:image/jpg") ||
-      prefix.startsWith("data:image/png")
-    );
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const pathname = url.pathname.toLowerCase();
-    const ext = pathname.split(".").pop() || "";
-    return ["jpg", "jpeg", "png"].includes(ext);
-  } catch {
-    return false;
-  }
-}
-
 function preprocessPhone(v: unknown) {
   if (v === null || v === undefined) return "";
   return String(v).replace(/\s+/g, "").replace(/-/g, "");
 }
 
 const onboardingSchema = z.object({
-  fullName: z.string().trim().min(2).max(150),
-  email: z.string().email().optional().or(z.literal("")),
+  fullName: z.string().trim().min(1).max(150),
+  email: z.union([z.string().email(), z.literal("")]).optional().or(z.literal("")),
   phone: z.preprocess(preprocessPhone, z.string().regex(/^(?:(?:\+233|233|0)[235]\d{8})$/, "Invalid Ghana phone number")),
   cooperativeName: z.string().trim().max(200).optional().or(z.literal("")),
   gender: z.string().trim().max(40).optional().or(z.literal("")),
@@ -90,14 +44,14 @@ const onboardingSchema = z.object({
     .string()
     .optional()
     .or(z.literal(""))
-    .refine((v) => (!v ? true : hasAllowedImageType(v)), "Ghana Card photo must be JPG/PNG (URL or data: URI)"),
+    .refine((v) => (!v ? true : isAllowedImageReference(v)), "Ghana Card photo must be JPG/PNG (URL, local upload path, or data: URI)"),
   bio: z.string().trim().max(1000).optional().or(z.literal("")),
   districtId: z.string().cuid("Invalid districtId"),
   communityId: z.string().cuid("Invalid communityId"),
   
-  farmName: z.string().trim().min(2).max(150),
+  farmName: z.string().trim().min(1).max(150),
   farmType: z.string().optional(),
-  farmSize: z.coerce.number().positive().optional(),
+  farmSize: z.coerce.number().min(0).optional(),
   farmSizeUnit: z.enum(["acres", "hectares"]).optional(),
   ownershipType: z.enum(["Owned", "Rented", "Family"]).optional(),
   irrigationType: z.enum(["Rain-fed", "Irrigated", "Mixed"]).optional(),
@@ -106,7 +60,7 @@ const onboardingSchema = z.object({
     .string()
     .optional()
     .or(z.literal(""))
-    .refine((v) => (!v ? true : hasAllowedImageType(v)), "Farm site photo must be JPG/PNG (URL or data: URI)"),
+    .refine((v) => (!v ? true : isAllowedImageReference(v)), "Farm site photo must be JPG/PNG (URL, local upload path, or data: URI)"),
   
   location: locationSchema.optional(),
   
@@ -120,7 +74,7 @@ const onboardingSchema = z.object({
       .string()
       .optional()
       .or(z.literal(""))
-      .refine((v) => (!v ? true : hasAllowedDocumentType(v)), "Document must be PDF/JPG/PNG (URL or data: URI)"),
+      .refine((v) => (!v ? true : isAllowedDocumentReference(v)), "Document must be PDF/JPG/PNG (URL, local upload path, or data: URI)"),
   })).optional(),
 });
 

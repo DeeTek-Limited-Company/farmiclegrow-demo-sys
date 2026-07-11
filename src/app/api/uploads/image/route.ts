@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth/guards";
 import { randomBytes } from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+import { buildLocalUploadPath, isSupabaseStorageConfigured, type UploadKind } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -14,16 +17,12 @@ export async function POST(request: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const defaultBucket = process.env.SUPABASE_STORAGE_BUCKET || "uploads";
 
-  if (!supabaseUrl || !serviceKey) {
-    return NextResponse.json({ message: "Supabase Storage is not configured." }, { status: 500 });
-  }
-
   const form = await request.formData().catch(() => null);
   if (!form) {
     return NextResponse.json({ message: "Invalid form data" }, { status: 400 });
   }
 
-  const kind = String(form.get("kind") || "").trim().toLowerCase();
+  const kind = String(form.get("kind") || "").trim().toLowerCase() as UploadKind;
 
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -42,7 +41,9 @@ export async function POST(request: Request) {
 
   const ext =
     file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg";
-  const key = `${new Date().toISOString().slice(0, 10)}/${randomBytes(8).toString("hex")}.${ext}`;
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const fileName = randomBytes(8).toString("hex");
+  const key = `${datePrefix}/${fileName}.${ext}`;
 
   const bucket =
     kind === "docs"
@@ -53,13 +54,37 @@ export async function POST(request: Request) {
           ? process.env.SUPABASE_BUCKET_CERTS || defaultBucket
           : defaultBucket;
 
+  if (!isSupabaseStorageConfigured(process.env)) {
+    const localKind: UploadKind = kind === "docs" || kind === "photos" || kind === "certs" ? kind : "docs";
+    const publicPath = buildLocalUploadPath({
+      kind: localKind,
+      datePrefix,
+      fileName,
+      extension: ext,
+    });
+    const targetPath = path.join(process.cwd(), "public", ...publicPath.replace(/^\//, "").split("/"));
+    const targetDir = path.dirname(targetPath);
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(targetPath, Buffer.from(await file.arrayBuffer()));
+
+    return NextResponse.json({
+      url: publicPath,
+      publicUrl: publicPath,
+      storage: "local",
+      key: publicPath.replace(/^\/+/, ""),
+    });
+  }
+
+  const configuredSupabaseUrl = supabaseUrl!;
+  const configuredServiceKey = serviceKey!;
+
   const arrayBuffer = await file.arrayBuffer();
-  const uploadUrl = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/${bucket}/${key}`;
+  const uploadUrl = `${configuredSupabaseUrl.replace(/\/$/, "")}/storage/v1/object/${bucket}/${key}`;
   const uploadRes = await fetch(uploadUrl, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${serviceKey}`,
-      apikey: serviceKey,
+      authorization: `Bearer ${configuredServiceKey}`,
+      apikey: configuredServiceKey,
       "content-type": file.type,
       "x-upsert": "true",
     },
@@ -71,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: text || "Upload failed" }, { status: 502 });
   }
 
-  const publicUrl = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/${bucket}/${encodeURI(key)}`;
+  const publicUrl = `${configuredSupabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/${bucket}/${encodeURI(key)}`;
   const proxyUrl = `/api/uploads/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`;
   return NextResponse.json({ url: proxyUrl, publicUrl, bucket, key });
 }

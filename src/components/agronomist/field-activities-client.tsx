@@ -266,6 +266,46 @@ export function FieldActivitiesClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_field_activities_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => 
+              k !== "supervisorVerified" && v !== "" && v !== null && v !== undefined
+            );
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Field activity draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse field activities draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => 
+        k !== "supervisorVerified" && v !== "" && v !== null && v !== undefined
+      );
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_field_activities_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const uploadGeoPhoto = async (file: File) => {
     setUploadingGeoPhoto(true);
     try {
@@ -471,6 +511,9 @@ export function FieldActivitiesClient({
       if (!res.ok) throw new Error(data?.message || "Failed to save field activity.");
 
       toast.success(edit ? "Field activity updated" : "Field activity created");
+      if (!edit) {
+        localStorage.removeItem("farmicle_field_activities_draft");
+      }
       close();
       router.refresh();
 
