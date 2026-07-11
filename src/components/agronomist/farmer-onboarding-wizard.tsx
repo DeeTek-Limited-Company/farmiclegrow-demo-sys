@@ -170,6 +170,7 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
     getValues,
     setError,
     clearErrors,
+    reset,
     formState: { errors },
   } = useForm<FarmerOnboardingData>({
     // Removed global resolver to prevent full-form validation on each step
@@ -218,10 +219,134 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
   const isFirstLoadRef = useRef(true);
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control,
     name: "certifications",
   });
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getSessionKey = () => {
+    if (initialData?.id) {
+      return `farmicle_farmer_onboarding_draft:farmer:${initialData.id}`;
+    }
+    return `farmicle_farmer_onboarding_draft:new`;
+  };
+  
+  const sessionKey = getSessionKey();
+
+  const clearDraft = () => {
+    try {
+      sessionStorage.removeItem(sessionKey);
+      setLastSavedAt(null);
+      reset({
+        personal: { fullName: "", phone: "", email: "", cooperativeName: "", gender: "Male", ghanaCardPhotoUrl: "", bio: "", dateOfBirth: "", ghanaCardNumber: "" },
+        location: { districtId: "", communityId: "", region: "", district: "", community: "" },
+        farm: { farmName: "", farmSize: 0, farmSizeUnit: "acres", ownershipType: "Owned", irrigationType: "Rain-fed", farmSitePhotoUrl: "" },
+        crops: { primaryCrop: "", secondaryCrops: [] },
+        certifications: [],
+      });
+      setCurrentStep(0);
+    } catch (e) {
+      console.error("Failed to clear draft:", e);
+    }
+  };
+
+  const restoreDraft = (draftData: any, draftStep: number, replaceCertifications: (items: any[]) => void) => {
+    if (draftData?.personal) {
+      Object.entries(draftData.personal).forEach(([key, value]) => {
+        setValue(`personal.${key}` as any, value);
+      });
+    }
+    if (draftData?.location) {
+      Object.entries(draftData.location).forEach(([key, value]) => {
+        setValue(`location.${key}` as any, value);
+      });
+    }
+    if (draftData?.farm) {
+      Object.entries(draftData.farm).forEach(([key, value]) => {
+        setValue(`farm.${key}` as any, value);
+      });
+    }
+    if (draftData?.crops) {
+      Object.entries(draftData.crops).forEach(([key, value]) => {
+        setValue(`crops.${key}` as any, value);
+      });
+    }
+    if (draftData?.certifications && Array.isArray(draftData.certifications)) {
+      replaceCertifications(draftData.certifications);
+    }
+    setCurrentStep(draftStep);
+    toast.success("Draft restored!");
+  };
+
+  const formValues = watch();
+
+  // Load draft on mount
+  useEffect(() => {
+    const loadDraft = () => {
+      try {
+        const saved = sessionStorage.getItem(sessionKey);
+        if (saved) {
+          const { data, timestamp, step } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000; // 48 hours
+          
+          if (isRecent && data) {
+            const hasData = Object.values(data.personal || {}).some(v => v !== "" && v !== null && v !== undefined && v !== "Male") ||
+                            Object.values(data.farm || {}).some(v => v !== "" && v !== null && v !== undefined && v !== 0 && v !== "acres" && v !== "Owned" && v !== "Rain-fed");
+            if (hasData) {
+              restoreDraft(data, step || 0, replace);
+              setLastSavedAt(timestamp);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load draft:", e);
+      }
+    };
+    
+    loadDraft();
+  }, [sessionKey]);
+
+  // Save draft on changes with debounce
+  useEffect(() => {
+    if (isSubmitting || initialData) return;
+    
+    const saveDraft = () => {
+      setIsSaving(true);
+      try {
+        const hasData = Object.values(formValues.personal || {}).some(v => v !== "" && v !== null && v !== undefined && v !== "Male") ||
+                        Object.values(formValues.farm || {}).some(v => v !== "" && v !== null && v !== undefined && v !== 0 && v !== "acres" && v !== "Owned" && v !== "Rain-fed");
+        if (hasData) {
+          const draft = {
+            data: formValues,
+            step: currentStep,
+            timestamp: Date.now(),
+          };
+          sessionStorage.setItem(sessionKey, JSON.stringify(draft));
+          setLastSavedAt(Date.now());
+        }
+      } catch (e) {
+        console.error("Failed to save draft:", e);
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(saveDraft, 500);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formValues, currentStep, isSubmitting, sessionKey, initialData]);
 
   const nextStep = async () => {
     const step = steps[currentStep];
@@ -313,6 +438,7 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
       await response.json();
 
+      clearDraft();
       toast.success(initialData ? "Farmer updated successfully!" : "Farmer onboarded successfully!");
       onSuccess();
     } catch (error: any) {
@@ -1374,15 +1500,53 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
 
             {/* Footer Navigation */}
             <div className="p-6 bg-slate-100/50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <Button 
-                type="button" 
-                variant="ghost" 
-                onClick={prevStep}
-                disabled={currentStep === 0 || isSubmitting}
-                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider w-full sm:w-auto order-2 sm:order-1", currentStep === 0 && "opacity-0")}
-              >
-                <ChevronLeft className="w-4 h-4 mr-2" /> Back
-              </Button>
+              <div className="flex items-center gap-4 w-full sm:w-auto order-2 sm:order-1">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={prevStep}
+                  disabled={currentStep === 0 || isSubmitting}
+                  className={cn("rounded-xl font-bold uppercase text-[10px] tracking-wider", currentStep === 0 && "opacity-0")}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-2" /> Back
+                </Button>
+                
+                {/* Save Status */}
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>Saving...</span>
+                    </>
+                  ) : lastSavedAt ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                      <span>Saved {(() => {
+                        const diff = Date.now() - lastSavedAt;
+                        if (diff < 60000) return "just now";
+                        const mins = Math.floor(diff / 60000);
+                        return `${mins} min${mins > 1 ? 's' : ''} ago`;
+                      })()}</span>
+                    </>
+                  ) : null}
+                  
+                  {/* Discard Draft Button */}
+                  {lastSavedAt && !isSubmitting && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        clearDraft();
+                        toast.success("Draft discarded");
+                      }}
+                      className="h-8 rounded-lg text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 font-bold"
+                    >
+                      Discard
+                    </Button>
+                  )}
+                </div>
+              </div>
  
               {currentStep === steps.length - 1 ? (
                 <Button 
