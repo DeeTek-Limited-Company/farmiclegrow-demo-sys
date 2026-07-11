@@ -255,6 +255,46 @@ export function PlantingClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_planting_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => 
+              k !== "fieldOfficerName" && k !== "photosUploadedUrls" && v !== "" && v !== null && v !== undefined
+            );
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Planting activity draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse planting draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => 
+        k !== "fieldOfficerName" && k !== "photosUploadedUrls" && v !== "" && v !== null && v !== undefined
+      );
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_planting_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const uploadPhotoFiles = async (files: File[]) => {
     if (!files.length) return;
     setUploadingPhotos(true);
@@ -383,6 +423,9 @@ export function PlantingClient({
       if (!res.ok) throw new Error(data?.message || "Failed to save planting record.");
 
       toast.success(edit ? "Planting record updated" : "Planting record created");
+      if (!edit) {
+        localStorage.removeItem("farmicle_planting_draft");
+      }
       close();
       router.refresh();
 

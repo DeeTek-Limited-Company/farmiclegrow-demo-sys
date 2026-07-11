@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -141,6 +141,46 @@ export function QualityTestingClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_quality_testing_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => 
+              k !== "passed" && v !== "" && v !== null && v !== undefined
+            );
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Quality test draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse quality test draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => 
+        k !== "passed" && v !== "" && v !== null && v !== undefined
+      );
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_quality_testing_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const openCreate = () => {
     resetForm();
     setOpen(true);
@@ -200,6 +240,9 @@ export function QualityTestingClient({
       if (!res.ok) throw new Error(data?.message || "Failed to save quality test.");
 
       toast.success(edit ? "Quality test updated" : "Quality test recorded");
+      if (!edit) {
+        localStorage.removeItem("farmicle_quality_testing_draft");
+      }
       close();
       router.refresh();
 

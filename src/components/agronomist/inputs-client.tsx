@@ -192,6 +192,42 @@ export function InputsClient({
     setEdit(null);
   };
 
+  // Load draft on mount/open
+  useEffect(() => {
+    if (open && !edit) {
+      const saved = localStorage.getItem("farmicle_inputs_draft");
+      if (saved) {
+        try {
+          const { form: savedForm, timestamp } = JSON.parse(saved);
+          const isRecent = Date.now() - timestamp < 48 * 60 * 60 * 1000;
+          if (isRecent && savedForm) {
+            const hasData = Object.entries(savedForm).some(([k, v]) => v !== "" && v !== null && v !== undefined);
+            if (hasData) {
+              setForm(savedForm);
+              toast.success("Inputs applied draft restored!");
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse inputs draft", e);
+        }
+      }
+    }
+  }, [open, edit]);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (open && !edit && !saving) {
+      const hasData = Object.entries(form).some(([k, v]) => v !== "" && v !== null && v !== undefined);
+      if (hasData) {
+        const draft = {
+          form,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem("farmicle_inputs_draft", JSON.stringify(draft));
+      }
+    }
+  }, [open, edit, saving, form]);
+
   const openCreate = () => {
     resetForm();
     if (context) {
@@ -274,6 +310,9 @@ export function InputsClient({
       if (!res.ok) throw new Error(data?.message || "Failed to save input record.");
 
       toast.success(edit ? "Input updated" : "Input recorded");
+      if (!edit) {
+        localStorage.removeItem("farmicle_inputs_draft");
+      }
       close();
       router.refresh();
 

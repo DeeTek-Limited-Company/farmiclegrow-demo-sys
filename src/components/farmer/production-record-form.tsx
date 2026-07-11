@@ -17,13 +17,14 @@ export function ProductionRecordForm({ farmerId, defaultCrop }: { farmerId: stri
   const [season, setSeason] = useState<string>("2024 Main");
   const [cropType, setCropType] = useState<string>(defaultCrop ?? "");
   const [quantity, setQuantity] = useState<string>("");
+  const [unit, setUnit] = useState<"ton" | "kg">("ton");
   const router = useRouter();
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
 
-    const qty = Number(quantity);
+    let qty = Number(quantity);
     if (!season.trim()) {
       toast.error("Please select a season.");
       setLoading(false);
@@ -35,9 +36,12 @@ export function ProductionRecordForm({ farmerId, defaultCrop }: { farmerId: stri
       return;
     }
     if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error("Please enter a valid quantity (tons).");
+      toast.error(`Please enter a valid quantity (${unit === "ton" ? "tons" : "kg"}).`);
       setLoading(false);
       return;
+    }
+    if (unit === "kg") {
+      qty = qty / 1000;
     }
 
     const payload = {
@@ -66,6 +70,7 @@ export function ProductionRecordForm({ farmerId, defaultCrop }: { farmerId: stri
     setSeason("2024 Main");
     setCropType(defaultCrop ?? "");
     setQuantity("");
+    setUnit("ton");
     setLoading(false);
     router.refresh();
   }
@@ -108,17 +113,29 @@ export function ProductionRecordForm({ farmerId, defaultCrop }: { farmerId: stri
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="quantity">Quantity (Tons)</Label>
-            <Input
-              id="quantity"
-              name="quantity"
-              type="number"
-              step="0.1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              required
-              placeholder="0.0"
-            />
+            <Label htmlFor="quantity">Quantity</Label>
+            <div className="flex gap-2">
+              <Input
+                id="quantity"
+                name="quantity"
+                type="number"
+                step="0.1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+                placeholder="0.0"
+                className="flex-1"
+              />
+              <Select value={unit} onValueChange={(v: "ton" | "kg") => setUnit(v)}>
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue placeholder="Unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ton">Tons (T)</SelectItem>
+                  <SelectItem value="kg">Kilograms (kg)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Spinner className="mr-2" /> : <Plus className="mr-2 w-4 h-4" />}

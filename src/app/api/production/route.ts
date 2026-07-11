@@ -27,7 +27,7 @@ const productionSchema = z.object({
   farmProfileId: optionalCuid,
   season: z.string().min(1, "Season is required"),
   cropType: z.string().min(1, "Crop type is required"),
-  cropVariety: z.string().optional().nullable(),
+  cropVariety: z.string().min(1, "Crop variety is required"),
   status: z.enum(["PLANNED", "ACTIVE", "HARVESTED", "COMPLETED"]).default("PLANNED"),
   plantingDate: z.string().datetime().optional().nullable(),
   expectedHarvestDate: z.string().datetime().optional().nullable(),
