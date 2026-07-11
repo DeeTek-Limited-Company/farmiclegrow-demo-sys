@@ -57,6 +57,7 @@ export function ProductionRecordForm({
   const [farmersLoading, setFarmersLoading] = useState(false);
   const [farmers, setFarmers] = useState<any[]>(() => initialFarmers ?? []);
   const [plots, setPlots] = useState<any[]>([]);
+  const [plotsLoading, setPlotsLoading] = useState(false);
   const [expectedYieldUnit, setExpectedYieldUnit] = useState<"ton" | "kg">("ton");
   const [quantityUnit, setQuantityUnit] = useState<"ton" | "kg">("ton");
   const [actualYieldUnit, setActualYieldUnit] = useState<"ton" | "kg">("ton");
@@ -173,6 +174,7 @@ export function ProductionRecordForm({
   ]);
 
   const fetchPlots = async (farmerId: string) => {
+    setPlotsLoading(true);
     try {
       const res = await apiFetch(`/api/plots?farmerId=${encodeURIComponent(farmerId)}`);
       const data = await res.json().catch(() => ({}));
@@ -183,6 +185,8 @@ export function ProductionRecordForm({
       }
     } catch {
       setPlots([]);
+    } finally {
+      setPlotsLoading(false);
     }
   };
 
@@ -407,7 +411,13 @@ export function ProductionRecordForm({
                   required
                 >
                   <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-bold focus:ring-emerald-500/20 transition-all">
-                    <SelectValue placeholder={formData.farmerId ? "Select a plot..." : "Select a farmer first"} />
+                    <SelectValue placeholder={
+                      plotsLoading 
+                        ? "Loading plots..." 
+                        : formData.farmerId 
+                          ? "Select a plot..." 
+                          : "Select a farmer first"
+                    } />
                   </SelectTrigger>
                   <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
                     {plots.map((p) => (
