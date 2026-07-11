@@ -99,6 +99,7 @@ export function FarmPlotsClient({
     farmerId: "",
     plotName: "",
     plotSizeHectare: "",
+    plotSizeUnit: "hectares",
     soilType: "",
     irrigationSource: "",
     previousCrop: "",
