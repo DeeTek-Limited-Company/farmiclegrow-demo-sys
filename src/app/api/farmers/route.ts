@@ -183,6 +183,8 @@ export async function GET(request: Request) {
     where: whereClause,
     include: {
       community: { include: { district: { include: { region: true } } } },
+      certifications: true,
+      documents: true,
       farmProfiles: {
         include: { locations: true },
         orderBy: { createdAt: "desc" },

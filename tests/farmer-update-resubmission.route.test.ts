@@ -199,8 +199,8 @@ describe("farmer update route", () => {
     expect(txMock.farmLocation.updateMany).toHaveBeenCalledTimes(1);
     expect(txMock.certification.deleteMany).toHaveBeenCalledTimes(1);
     expect(txMock.certification.createMany).toHaveBeenCalledTimes(1);
-    expect(txMock.document.deleteMany).toHaveBeenCalledTimes(1);
-    expect(txMock.document.createMany).toHaveBeenCalledTimes(1);
+    expect(txMock.document.deleteMany).toHaveBeenCalledTimes(3);
+    expect(txMock.document.createMany).toHaveBeenCalledTimes(3);
 
     const farmerUpdateArgs = txMock.farmer.updateMany.mock.calls[0][0];
     expect(farmerUpdateArgs.data.cooperativeName).toBe("Goaso Growers");

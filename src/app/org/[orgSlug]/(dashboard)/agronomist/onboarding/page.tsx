@@ -19,6 +19,7 @@ export default async function OnboardingPage() {
         include: { district: { include: { region: true } } }
       },
       certifications: true,
+      documents: true,
       farmProfiles: {
         include: { locations: true },
         orderBy: { createdAt: "desc" },
