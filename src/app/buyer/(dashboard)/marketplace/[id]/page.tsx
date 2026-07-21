@@ -95,6 +95,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
                 src={primaryImage}
                 alt={listing.title}
                 fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
               />
             ) : (
@@ -111,6 +112,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
                     src={img}
                     alt={`${listing.title} - Image ${idx + 1}`}
                     fill
+                    sizes="(max-width: 1024px) 25vw, 12vw"
                     className="object-cover"
                   />
                 </div>
