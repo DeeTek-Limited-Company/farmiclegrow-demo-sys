@@ -12,10 +12,32 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-import { Loader2, Search, Users, Building2, ShieldCheck, Mail, Calendar, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { format } from "date-fns";
+import { 
+  Loader2, 
+  Search, 
+  Users, 
+  Building2, 
+  ShieldCheck, 
+  Mail, 
+  Calendar, 
+  KeyRound, 
+  Copy, 
+  Check, 
+  RefreshCw,
+  AlertTriangle
+} from "lucide-react";
 
 interface User {
   id: string;
@@ -32,12 +54,30 @@ interface GlobalUserManagerProps {
   organizations: Array<{ id: string, name: string }>;
 }
 
+function generateRandomPassword(length = 12): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 export function GlobalUserManager({ organizations }: GlobalUserManagerProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [orgFilter, setOrgFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
+
+  // Reset Password Modal state
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [mustChangePassword, setMustChangePassword] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -63,6 +103,55 @@ export function GlobalUserManager({ organizations }: GlobalUserManagerProps) {
   useEffect(() => {
     fetchUsers();
   }, [orgFilter, roleFilter]);
+
+  const handleOpenResetModal = (user: User) => {
+    setSelectedUser(user);
+    setNewPassword(generateRandomPassword(12));
+    setMustChangePassword(true);
+    setResetError(null);
+    setResetSuccess(false);
+    setCopied(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUser) return;
+    if (!newPassword || newPassword.length < 8) {
+      setResetError("Password must be at least 8 characters long.");
+      return;
+    }
+
+    setIsResetting(true);
+    setResetError(null);
+
+    try {
+      const res = await apiFetch(`/api/super-admin/users/${selectedUser.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newPassword,
+          mustChangePassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setResetError(data.message || "Failed to reset password.");
+      } else {
+        setResetSuccess(true);
+      }
+    } catch (error) {
+      setResetError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleCopyPassword = () => {
+    navigator.clipboard.writeText(newPassword);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const filteredUsers = users.filter(user => 
     user.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -136,7 +225,8 @@ export function GlobalUserManager({ organizations }: GlobalUserManagerProps) {
                   <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Organization</TableHead>
                   <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Roles</TableHead>
                   <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Status</TableHead>
-                  <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400 pr-6">Created</TableHead>
+                  <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400">Created</TableHead>
+                  <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-400 pr-6 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -186,16 +276,27 @@ export function GlobalUserManager({ organizations }: GlobalUserManagerProps) {
                         {user.isActive ? "ACTIVE" : "INACTIVE"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="pr-6">
+                    <TableCell>
                       <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
                         <Calendar className="w-3 h-3" /> {format(new Date(user.createdAt), "MMM d, yyyy")}
                       </span>
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200 font-bold text-xs gap-1.5 transition-colors"
+                        onClick={() => handleOpenResetModal(user)}
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        Reset Password
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
                 {filteredUsers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-20 text-center text-slate-400 italic font-medium">
+                    <TableCell colSpan={6} className="py-20 text-center text-slate-400 italic font-medium">
                       No users found matching the current filters.
                     </TableCell>
                   </TableRow>
@@ -205,6 +306,129 @@ export function GlobalUserManager({ organizations }: GlobalUserManagerProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Reset Password Modal */}
+      <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black flex items-center gap-2 text-slate-900">
+              <KeyRound className="w-5 h-5 text-amber-500" />
+              Reset User Password
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Administrative password reset for <strong className="text-slate-800">{selectedUser?.fullName}</strong> ({selectedUser?.email}).
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetSuccess ? (
+            <div className="space-y-4 py-3">
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Password Successfully Reset!
+                </div>
+                <p className="text-xs text-emerald-700">
+                  All active sessions for this user have been revoked. The user must use this new temporary password to log in.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">New Password</label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={newPassword}
+                    className="font-mono text-sm font-bold border-slate-200 bg-slate-50 rounded-xl"
+                  />
+                  <Button
+                    onClick={handleCopyPassword}
+                    className="rounded-xl font-bold gap-1.5 min-w-[100px]"
+                    variant={copied ? "accent" : "default"}
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-3">
+              {resetError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {resetError}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">New Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewPassword(generateRandomPassword(12))}
+                    className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Regenerate
+                  </button>
+                </div>
+                <Input
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password..."
+                  className="font-mono text-sm font-bold border-slate-200 rounded-xl h-11"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="mustChangePassword"
+                  checked={mustChangePassword}
+                  onChange={(e) => setMustChangePassword(e.target.checked)}
+                  className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
+                />
+                <label htmlFor="mustChangePassword" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                  Require user to change password on next login
+                </label>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500 font-medium">
+                <strong>Security note:</strong> Performing this reset will invalidate all current active sessions for this account.
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            {resetSuccess ? (
+              <Button
+                onClick={() => setSelectedUser(null)}
+                className="w-full sm:w-auto rounded-xl font-bold"
+              >
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedUser(null)}
+                  disabled={isResetting}
+                  className="rounded-xl font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleResetPassword}
+                  disabled={isResetting || !newPassword}
+                  className="rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white gap-2"
+                >
+                  {isResetting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Confirm Password Reset
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

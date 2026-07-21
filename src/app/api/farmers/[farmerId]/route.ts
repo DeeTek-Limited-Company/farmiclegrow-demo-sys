@@ -136,6 +136,8 @@ export async function GET(_request: Request, context: RouteContext) {
     where: whereClause,
     include: {
       community: { include: { district: { include: { region: true } } } },
+      certifications: true,
+      documents: true,
       farmProfiles: {
         include: { locations: true },
         orderBy: { createdAt: "asc" },
@@ -396,46 +398,69 @@ export async function PUT(request: Request, context: RouteContext) {
       }
     }
 
-    const shouldSyncDocuments =
-      data.ghanaCardPhotoUrl !== undefined || data.farmSitePhotoUrl !== undefined || data.certifications !== undefined;
-    if (shouldSyncDocuments) {
+    // Sync documents granularly so they don't override each other
+    if (data.ghanaCardPhotoUrl !== undefined) {
       await tx.document.deleteMany({
         where: {
           farmerId,
           organizationId,
-          type: { in: ["GHANA_CARD", "FARM_IMAGE", "CERTIFICATION"] },
+          type: "GHANA_CARD",
         },
       });
 
-      const documentsToCreate: OnboardingDocumentInput[] = [];
       const ghanaCardPhotoUrl = (data.ghanaCardPhotoUrl || "").trim();
       if (ghanaCardPhotoUrl) {
-        documentsToCreate.push({
-          organizationId,
-          farmerId,
-          type: "GHANA_CARD",
-          name: "Ghana Card",
-          url: ghanaCardPhotoUrl,
-          status: "UPLOADED",
+        await tx.document.createMany({
+          data: [{
+            organizationId,
+            farmerId,
+            type: "GHANA_CARD",
+            name: "Ghana Card",
+            url: ghanaCardPhotoUrl,
+            status: "UPLOADED",
+          }],
         });
       }
+    }
+
+    if (data.farmSitePhotoUrl !== undefined) {
+      await tx.document.deleteMany({
+        where: {
+          farmerId,
+          organizationId,
+          type: "FARM_IMAGE",
+        },
+      });
 
       const farmSitePhotoUrl = (data.farmSitePhotoUrl || "").trim();
       if (farmSitePhotoUrl) {
-        documentsToCreate.push({
-          organizationId,
-          farmerId,
-          type: "FARM_IMAGE",
-          name: "Farm Site Photo",
-          url: farmSitePhotoUrl,
-          status: "UPLOADED",
+        await tx.document.createMany({
+          data: [{
+            organizationId,
+            farmerId,
+            type: "FARM_IMAGE",
+            name: "Farm Site Photo",
+            url: farmSitePhotoUrl,
+            status: "UPLOADED",
+          }],
         });
       }
+    }
 
-      for (const certification of data.certifications || []) {
+    if (data.certifications !== undefined) {
+      await tx.document.deleteMany({
+        where: {
+          farmerId,
+          organizationId,
+          type: "CERTIFICATION",
+        },
+      });
+
+      const certDocumentsToCreate: OnboardingDocumentInput[] = [];
+      for (const certification of data.certifications) {
         const documentUrl = (certification.documentUrl || "").trim();
         if (!documentUrl) continue;
-        documentsToCreate.push({
+        certDocumentsToCreate.push({
           organizationId,
           farmerId,
           type: "CERTIFICATION",
@@ -445,8 +470,8 @@ export async function PUT(request: Request, context: RouteContext) {
         });
       }
 
-      if (documentsToCreate.length > 0) {
-        await tx.document.createMany({ data: documentsToCreate });
+      if (certDocumentsToCreate.length > 0) {
+        await tx.document.createMany({ data: certDocumentsToCreate });
       }
     }
 

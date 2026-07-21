@@ -184,7 +184,7 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
         dateOfBirth: initialData.dateOfBirth ? new Date(initialData.dateOfBirth).toISOString().split('T')[0] : "",
         ghanaCardNumber: initialData.ghanaCardNumber || "",
         bio: initialData.bio || "",
-        ghanaCardPhotoUrl: initialData.ghanaCardPhotoUrl || ""
+        ghanaCardPhotoUrl: initialData.ghanaCardPhotoUrl || initialData.documents?.find((d: any) => d.type === "GHANA_CARD")?.url || ""
       },
       location: {
         districtId: initialData.community?.districtId || "",
@@ -201,7 +201,7 @@ export function FarmerOnboardingWizard({ onSuccess, onClose, initialData }: { on
         farmSizeUnit: initialData.farmProfiles?.[0]?.farmSizeUnit || "acres",
         ownershipType: initialData.farmProfiles?.[0]?.ownershipType || "Owned",
         irrigationType: initialData.farmProfiles?.[0]?.irrigationType || "Rain-fed",
-        farmSitePhotoUrl: initialData.farmProfiles?.[0]?.farmSitePhotoUrl || ""
+        farmSitePhotoUrl: initialData.farmProfiles?.[0]?.farmSitePhotoUrl || initialData.documents?.find((d: any) => d.type === "FARM_IMAGE")?.url || ""
       },
       crops: {
         primaryCrop: initialData.primaryCrop || "",
