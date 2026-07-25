@@ -128,3 +128,108 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 }
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    // 1. Authorize: Only admins can delete users
+    const auth = await requireApiRole(["admin"]);
+    if (!auth.ok) {
+      return NextResponse.json({ message: auth.message }, { status: auth.status });
+    }
+
+    const organizationId = requireOrgScope(auth.user);
+    const { userId } = await context.params;
+
+    const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || undefined;
+
+    // 2. Prevent self-deletion
+    if (auth.user.id === userId) {
+      return NextResponse.json(
+        { message: "You cannot delete your own account." },
+        { status: 400 }
+      );
+    }
+
+    // 3. Find target user and verify organization match
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!targetUser || targetUser.organizationId !== organizationId) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    // 4. Prevent deleting super_admin users
+    const isSuperAdmin = targetUser.userRoles.some((ur) => ur.role.key === "super_admin");
+    if (isSuperAdmin) {
+      return NextResponse.json(
+        { message: "Super admin accounts cannot be deleted." },
+        { status: 403 }
+      );
+    }
+
+    // 5. Clean up dependent records in a transaction and delete user
+    await prisma.$transaction(async (tx) => {
+      // Disassociate audit logs by nullifying userId to keep audit trail intact
+      await tx.auditLog.updateMany({
+        where: { userId },
+        data: { userId: null },
+      });
+
+      // Delete approval actions performed by this user
+      await tx.approvalAction.deleteMany({
+        where: { actorUserId: userId },
+      });
+
+      // Delete farmer submissions made by this user
+      await tx.farmerSubmission.deleteMany({
+        where: { submittedById: userId },
+      });
+
+      // Delete order messages sent by this user
+      await tx.orderMessage.deleteMany({
+        where: { senderId: userId },
+      });
+
+      // If farmer record exists with externalRef == userId, delete matching farmer
+      await tx.farmer.deleteMany({
+        where: { externalRef: userId, organizationId },
+      });
+
+      // Delete user (cascade deletes UserRole, Session, AgronomistDistrict, BuyerProfile, Notification)
+      await tx.user.delete({
+        where: { id: userId },
+      });
+    });
+
+    await logAudit({
+      action: "USER_DELETED",
+      organizationId,
+      userId: auth.user.id,
+      details: { deletedUserId: userId, email: targetUser.email, fullName: targetUser.fullName },
+      ip,
+      userAgent,
+      status: "SUCCESS",
+    });
+
+    return NextResponse.json(
+      { message: "User deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Error deleting user:", error);
+    return NextResponse.json(
+      { message: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+

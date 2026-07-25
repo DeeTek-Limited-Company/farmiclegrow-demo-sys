@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Shield, User, Mail, Calendar, Power, MoreHorizontal, Pencil, MapPin, Building2, Phone } from "lucide-react";
+import { Shield, User, Mail, Calendar, Power, MoreHorizontal, Pencil, MapPin, Building2, Phone, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EditUserModal } from "./edit-user-modal";
 import { DistrictAssignmentModal } from "./district-assignment-modal";
@@ -17,6 +17,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type UserWithRoles = {
   id: string;
@@ -62,6 +70,10 @@ export function UserList({ initialUsers, allDistricts }: {
   const [distAssignUser, setDistAssignUser] = useState<{ id: string; fullName: string } | null>(null);
   const [isDistModalOpen, setIsDistModalOpen] = useState(false);
 
+  const [deletingUser, setDeletingUser] = useState<{ id: string; fullName: string; email: string } | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   async function toggleStatus(userId: string, currentStatus: boolean) {
     const response = await apiFetch(`/api/users/${userId}/status`, {
       method: "PATCH",
@@ -77,6 +89,32 @@ export function UserList({ initialUsers, allDistricts }: {
 
     toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'}`);
     router.refresh();
+  }
+
+  async function handleDeleteUser() {
+    if (!deletingUser) return;
+    setIsDeleting(true);
+    try {
+      const response = await apiFetch(`/api/users/${deletingUser.id}`, {
+        method: "DELETE",
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        toast.error(body?.message ?? "Failed to delete user.");
+        return;
+      }
+
+      toast.success("User deleted successfully.");
+      setIsDeleteModalOpen(false);
+      setDeletingUser(null);
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error?.message ?? "An error occurred while deleting user.");
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -211,6 +249,20 @@ export function UserList({ initialUsers, allDistricts }: {
                         <span>Manage Districts</span>
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem
+                      className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                      onClick={() => {
+                        setDeletingUser({
+                          id: user.id,
+                          fullName: user.fullName,
+                          email: user.email,
+                        });
+                        setIsDeleteModalOpen(true);
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      <span>Delete User</span>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
@@ -234,6 +286,49 @@ export function UserList({ initialUsers, allDistricts }: {
           users.find(u => u.id === distAssignUser?.id)?.agronomistDistricts.map(ad => ad.district.id) || []
         }
       />
+
+      <Dialog open={isDeleteModalOpen} onOpenChange={(open) => !open && !isDeleting && setIsDeleteModalOpen(false)}>
+        <DialogContent className="sm:max-w-[425px] rounded-[2rem] p-6 border-0 shadow-2xl">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mb-2">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-2xl font-black tracking-tight">Delete User</DialogTitle>
+            <DialogDescription className="text-sm font-medium text-muted-foreground pt-1">
+              Are you sure you want to completely delete <strong className="text-foreground">{deletingUser?.fullName}</strong> ({deletingUser?.email})?
+              This action cannot be undone and will permanently remove their access and assignments.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="h-11 rounded-xl font-bold border-slate-200"
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteUser}
+              className="h-11 rounded-xl font-bold shadow-lg shadow-destructive/20"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Completely"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
