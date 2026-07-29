@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { SubmissionDecisionPanel } from "@/components/admin/submission-decision-panel";
+import { SubmissionFarmerEditor } from "@/components/admin/submission-farmer-editor";
 import { requireOrgScope } from "@/lib/tenant/scope";
 import { getSubmissionApprovalBlockers } from "@/lib/onboarding/approval-blockers";
 import {
@@ -123,6 +124,8 @@ export default async function AdminSubmissionDetailPage({ params }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      <SubmissionFarmerEditor farmer={farmer as any} isPending={submission.status === "PENDING_REVIEW"} />
 
       {missing.length > 0 && (
         <Card className="border-0 shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">

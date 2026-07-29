@@ -58,6 +58,7 @@ const updateSchema = z.object({
       latitude: z.coerce.number().min(-90).max(90).optional(),
       longitude: z.coerce.number().min(-180).max(180).optional(),
       address: z.string().trim().max(255).optional().or(z.literal("")),
+      isValidated: z.boolean().optional(),
     })
     .optional(),
   certifications: z.array(certificationSchema).optional(),
@@ -345,13 +346,24 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     if (data.location) {
+      const lat = data.location.latitude ?? primaryLocation?.latitude ?? null;
+      const lng = data.location.longitude ?? primaryLocation?.longitude ?? null;
+      let isValidated = primaryLocation?.isValidated ?? false;
+
+      if (data.location.isValidated !== undefined) {
+        isValidated = data.location.isValidated;
+      } else if (lat != null && lng != null) {
+        isValidated = true;
+      }
+
       if (primaryLocation == null) {
         await tx.farmLocation.create({
           data: {
             organizationId: farmer.organizationId,
             farmProfileId: profile.id,
-            latitude: data.location.latitude ?? null,
-            longitude: data.location.longitude ?? null,
+            latitude: lat != null ? Number(lat) : null,
+            longitude: lng != null ? Number(lng) : null,
+            isValidated,
             region: selectedCommunity?.district.region.name || data.location.region || null,
             district: selectedCommunity?.district.name || data.location.district || null,
             community: selectedCommunity?.name || data.location.community || null,
@@ -365,8 +377,9 @@ export async function PUT(request: Request, context: RouteContext) {
         await tx.farmLocation.updateMany({
           where: { id: primaryLocation.id, organizationId },
           data: {
-            latitude: data.location.latitude ?? null,
-            longitude: data.location.longitude ?? null,
+            latitude: lat != null ? Number(lat) : null,
+            longitude: lng != null ? Number(lng) : null,
+            isValidated,
             region: selectedCommunity?.district.region.name || data.location.region || null,
             district: selectedCommunity?.district.name || data.location.district || null,
             community: selectedCommunity?.name || data.location.community || null,
