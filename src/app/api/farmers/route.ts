@@ -295,6 +295,7 @@ export async function POST(request: Request) {
                   organizationId,
                   latitude: data.location?.latitude ?? null,
                   longitude: data.location?.longitude ?? null,
+                  isValidated: Boolean(data.location?.latitude != null && data.location?.longitude != null),
                   region: community.district.region.name,
                   district: community.district.name,
                   community: community.name,
